@@ -4,7 +4,6 @@ import heapq
 import matplotlib.pyplot as plt
 from utils import h_diagonal, h_euclidian, h_manhattan, generate_rectangle
 import random
-import pandas as pd
 
 
 class Parent:
@@ -22,13 +21,14 @@ class Cell:
 
 
 # Define size of grid
+# mothod to adjust size to what is needed
 ROWS = 100
 COLS = 100
 
 # COLORS used for different paths, in final form all routes same color
-COLORS = {  'white' : [1,1,1],   'black' : [0,0,0],   'red'   : [1,0,0],   'green' : [0,1,0],
-            'orange': [1,1,0],   'blue'  : [0,0,1],   'yellow': [0,1,1],   'purple': [1,0,1],
-            'pink'  : [0.8,0,0],   'cyan'  : [0,0.8,0.8]
+COLORS = {  'white' : [1,1,1],          'black' : [0.0,0.0,0.0],    'red'   : [1,0.0,0.0],  'green' : [0.0,1,0.0],
+            'orange': [1,1,0.0],        'blue'  : [0.0,0.0,1],      'yellow': [0.0,0.8,1],  'purple': [1,0.0,1],
+            'pink'  : [0.8,0.0,0.0],    'aqua'  : [0.0,1,1]
 }
 
 
@@ -60,16 +60,17 @@ def is_destination(row: int, col: int, dest):
 # insert non usable cells in grid
 def add_obst_grid(blocked_cells, grid, value : int = 0): 
     # value = 1, 2, ... for routes, 0 for other types of obstacle
-    for cell in blocked_cells:
-        i, j = cell
-        grid[i][j] = value
-
+    grid_copy = grid.copy()
+    if blocked_cells is not None:
+        for cell in blocked_cells:
+            i, j = cell
+            grid_copy[i][j] = value
+    return grid_copy
 
 
 # Return the path from source to destination
 def get_path(cell_details, dest, path_index = 1):   # 2024-03-13 16:00:31
-    path = []
-    message = f"Path {path_index}. is:\n"
+    message = f"\nPath {path_index}. is:\n"
     print(message)
     path = []
     row, col = dest.x, dest.y
@@ -86,82 +87,38 @@ def get_path(cell_details, dest, path_index = 1):   # 2024-03-13 16:00:31
     path.reverse()
 
     for i in path:
-        print("->", i, end="")
+        print(" ->", i, end="")
         
     return path
 
 
 # Draw the grid and update color_matrix with the latest path
 def draw_grid(color_matrix, path, color = COLORS["yellow"]):    # 2024-03-13 16:00:53
-    for i in path: # assign color to path
-        x = i[0]
-        y = i[1]
-        color_matrix[x][y] = color 
+    if path != None:
+        for i in path: # assign color to path
+            x = i[0]
+            y = i[1]
+            color_matrix[x][y] = color 
+        
+        x, y = path[0]
+        color_matrix[x][y] = COLORS["green"]    # color assignement for pins
+        x, y = path[-1]
+        color_matrix[x][y] = COLORS["green"]
 
-    color_matrix[path[0][0]][path[0][0]] = COLORS["green"]    # color assignement for pins
-    color_matrix[path[len(path)-1][0]][path[(len(path)-1)][1]] = COLORS["green"]
+    arr = np.array(color_matrix, dtype=float)
 
-    plt.imshow(color_matrix)
+    plt.imshow(arr, origin='upper', extent=[0.0, 1, 0.0, 1])
     plt.axis("off")
     plt.show()
-
-
-# Trace the path from source to destination
-def trace_path(cell_details, dest, color_matrix, color = COLORS["yellow"], value = 1):
-    message = f"Path {value}. is"
-    print(message)
-    path = []
-    row, col = dest.x, dest.y
-
-    # Trace path from dest to start using parent cells
-    while not (cell_details[row][col].parent.x == row and cell_details[row][col].parent.y == col):
-        path.append((row, col))
-        temp_row = cell_details[row][col].parent.x
-        temp_col = cell_details[row][col].parent.y
-        row = temp_row
-        col = temp_col
-
-    path.append((row, col))
-    path.reverse()
-
-    for i in path:
-        print("->", i, end="")
-    
-    for i in path: # assign color to path
-        x = i[0]
-        y = i[1]
-        color_matrix[x][y] = color 
-
-
-    color_matrix[row][col] = COLORS["green"]    # color assignement for pins
-    color_matrix[path[len(path)-1][0]][path[(len(path)-1)][1]] = COLORS["green"]
-
-    '''rgb_matrix = np.zeros((ROWS, COLS, 3), dtype=float)
-    for i in range(ROWS):
-        for j in range(COLS):
-            if color_matrix[i][j] == "white":
-                rgb_matrix[i][j] = [0,0,0]
-            elif color_matrix[i][j] == "red":
-                rgb_matrix[i][j] = [1,0,0]
-            elif color_matrix[i][j] == "yellow":
-                rgb_matrix[i][j] = [1,1,0]
-            elif color_matrix[i][j] == "green":
-                rgb_matrix[i][j] = [0,1,0]'''
-
-    plt.imshow(color_matrix)
-    plt.axis("off")
-    plt.show()
-
-    return path # may not need it anymore
 
 
 def a_star_search(grid, start, dest, closed_list, cell_details):
     if not is_valid(start.x, start.y) or not is_valid(dest.x, dest.y):
-        print("Start | Dest invalid")
+        print("\nStart | Dest invalid")
         return False
 
     if not is_unblocked(grid, start.x, start.y) or not is_unblocked(grid, dest.x, dest.y):
-        print("Start | Dest blocked")
+        print("\nStart | Dest blocked")
         return False
 
     # initialize start of the list
@@ -196,7 +153,7 @@ def a_star_search(grid, start, dest, closed_list, cell_details):
                 if is_destination(new_i, new_j, dest):
                     cell_details[new_i][new_j].parent.x = i
                     cell_details[new_i][new_i].parent.y = j
-                    print("Destination cell found")
+                    print("\nDestination cell found")
                     found_dest = True
                     return True
                 
@@ -214,67 +171,89 @@ def a_star_search(grid, start, dest, closed_list, cell_details):
                         cell_details[new_i][new_j].parent.y = j
 
     if not found_dest:
-        print("Destination not reached")
+        print("\nDestination not reached")
         return False 
 
 
 # return an array filled with background color and colors assigned to pins 
-def assing_color_to_matrix(nodes, colors, background = COLORS['white']):
+def get_RGB_matrix(nodes, colors_list, background = COLORS['white']):
     matrix = [[background for _ in range(COLS)] for _ in range(ROWS)] # used to assign colors for routes
-    for i in range(colors):
-        pin1_x, pin1_y, pin2_x, pin2_y = nodes[i] # nodes coords
-        matrix[pin1_x][pin1_y] = colors[i]
-        matrix[pin2_x][pin2_y] = colors[i]
+
+    for i in range(len(colors_list)):
+        x = np.array(nodes).shape
+        if x != (4,): #  at least 2 routes
+            pin1_x, pin1_y, pin2_x, pin2_y = nodes[i] # nodes coords
+        else:
+            pin1_x = nodes[0];  pin1_y = nodes[1]
+            pin2_x = nodes[2];  pin2_y = nodes[3]
+
+        matrix[pin1_x][pin1_y] = colors_list[i]
+        matrix[pin2_x][pin2_y] = colors_list[i]
+    
     return matrix
 
 
 # reset cells from grid if not part of solution (path) to a default value
-def reset_cells_not_used(array, path, default_value):
-    for i in range(len(array)):
-        for j in range(len(array[0])):
-            if array[i][j] not in path:
-                array[i][j] = default_value
-
-
+def reset_cells_in_array(array, path, reset_value):
+    if path:
+        for i in range(len(array)):
+            for j in range(len(array[0])):
+                if (i, j) not in path:
+                    array[i][j] = reset_value
+    else:
+        arr = np.full(np.array(array).shape, reset_value)
+        array = arr
+    
 
 # run multiple A* routers for different sets of points
-# need to assign a color, a method to avoid previous path and be different from std obstacles
+
 # function for routing
-def multiple_routes_A_star(grid, nodes, colors, blocked):
+def multiple_routes_A_star(grid, routes, colors_list, blocked_cells):
     closed_list = [[False for _ in range(COLS)] for _ in range(ROWS)] # visited cells
     cell_details = [[Cell() for _ in range(COLS)] for _ in range(ROWS)] # status of every cell in the grid
-    
-    '''color_matrix = [[COLORS['white'] for _ in range(COLS)] for _ in range(ROWS)] # used to assign colors for routes'''
 
-    color_matrix = assing_color_to_matrix(nodes=None, colors=[COLORS['green']], background=COLORS['white'])
-    color_matrix = add_obst_grid(blocked_cells=blocked, grid=color_matrix, value=COLORS['red']) # mark with red cells that can be used (obstacles)
-    ''' for i in blocked:
-        x = i[0]
-        y = i[1]
-        color_matrix[x][y] = COLORS["red"]  # mark with red cells that can be used (obstacles)'''
-    
+    color_matrix = get_RGB_matrix(nodes=routes, colors_list=colors_list, background=COLORS['black'])
+    draw_grid(color_matrix=color_matrix, path=None, color=any)
+
+    # mark with red cells that can be used (obstacles)
+    color_matrix = add_obst_grid(blocked_cells=blocked_cells, grid=color_matrix, value=COLORS['red']) 
+
+    grid = add_obst_grid(blocked_cells=blocked_cells, grid=grid, value=0)
     route_index = 0
-    grid_copy = np.copy(grid)   # modifications will apply to a copy of original grid
 
-    for cell in nodes:
+    x = np.array(routes).shape
+    if x != (4,): # at least 2 routes
+        for cell in routes:
+            route_index += 1
+            start = Parent(cell[0], cell[1])    # cells structure: [[x_s1,y_s1,x_d1,y_d1], [x_s2,y_s2,x_d2,y_d2], ...]
+            dest  = Parent(cell[2], cell[3])
+
+            result = a_star_search(grid = grid, start = start, dest= dest, 
+                                closed_list=closed_list, cell_details=cell_details)
+            if result:
+                path = get_path(cell_details = cell_details, dest=dest, path_index=route_index)
+                draw_grid(color_matrix=color_matrix, path=path, color=colors_list[route_index-1])
+
+                reset_cells_in_array(array=closed_list,  path=path, reset_value=False)
+                cell_details = [[Cell() for _ in range(COLS)] for _ in range(ROWS)]
+            else:
+                print("\tNo change in drawing. Route can't be placed\n")
+                reset_cells_in_array(array=closed_list, path=None, reset_value=False)
+                cell_details = [[Cell() for _ in range(COLS)] for _ in range(ROWS)]
+    
+    else: # one single route
         route_index += 1
-        start = Parent(cell[0], cell[1])    # cells structure: [[x_s1,y_s1,x_d1,y_d1], [x_s2,y_s2,x_d2,y_d2], ...]
-        dest  = Parent(cell[2], cell[3])
-        path  = None
+        start = Parent(routes[0], routes[1])    # cells structure: [[x_s1,y_s1,x_d1,y_d1], [x_s2,y_s2,x_d2,y_d2], ...]
+        dest  = Parent(routes[2], routes[3])
 
-        result = a_star_search(grid = grid_copy, start = start, dest= dest, closed_list=closed_list, cell_details=cell_details)
+        result = a_star_search(grid = grid, start = start, dest= dest, 
+                            closed_list=closed_list, cell_details=cell_details)
         if result:
-            trace_path(cell_details=cell_details, dest=dest, color_matrix=color_matrix)
-            path = () # return path
-            # draw()  # redraw/draw with modification
-        else:
-            print("\tNo change in drawings | Route can't be placed\n")
+            path = get_path(cell_details = cell_details, dest=dest, path_index=route_index)
+            draw_grid(color_matrix=color_matrix, path=path, color=colors_list[route_index-1])
 
-        if path:
-            closed_list  = reset_cells_not_used(array=closed_list,  path=path, default_value=False)
-            cell_details = reset_cells_not_used(array=cell_details, path=path, default_value=Cell())
-        # grid = trace_route_grid(grid = grid, path = path)
-        # to add a return function for result of prev iteration
+        else:
+            print("\tNo change in drawing. Route can't be placed\n")
 
 
 def main():
@@ -283,11 +262,11 @@ def main():
     blocked  = [(0,2), (0,3), (4,0), (4,5), (4,8), (10,10), (1,1), (2,0), (2,1), (2,2), (2,3), (10,1), (2,4), (1,4), (1,5)]
     blocked = list(set(blocked + rectangle)) # remove duplicates
     
-    start = Parent(x = 50, y = 0)
-    dest  = Parent(x = 0,  y = 0)
-    #multiple_routes_A_star(grid=grid, nodes=[[start.x, start.y, dest.x, dest.y]], blocked=blocked)
-    a_star_search(grid, start, dest, blocked) 
-
+    colors = [COLORS['aqua'], COLORS['aqua']]
+    routes = [[50, 0, 0, 0], [10, 20, 30, 30]] # [[x1, y1, x2, y2], ... ]
+    #routes = [50, 0, 0, 0]
+    #colors = [COLORS['aqua']]
+    multiple_routes_A_star(grid=grid, routes=routes, colors_list=colors, blocked_cells=blocked)
 
 
 if __name__ == "__main__":
