@@ -47,3 +47,13 @@ def h_diagonal(row: int, col: int, dest):
 def generate_rectangle(row: int, col: int, length_x: int, length_y):
     area = [(i+row, j+col) for j in range(length_y) for i in range(length_x)]
     return area
+
+'''
+import sys
+sys.path.append("C:\\Program Files\\KiCad\\7.0\\bin\\Lib\\site-packages")
+sys.path.append("C:\\Program Files\\KiCad\\7.0\\bin")
+sys.path.append("C:\\Program Files\\KiCad\\7.0\\bin\\Lib")
+import pcbnew
+
+board = LoadBoard()
+'''

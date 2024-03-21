@@ -70,7 +70,7 @@ def add_obst_grid(blocked_cells, grid, value : int = 0):
 
 # Return the path from source to destination
 def get_path(cell_details, dest, path_index = 1):   # 2024-03-13 16:00:31
-    message = f"\nPath {path_index}. is:\n"
+    message = f"\nPath {path_index}. is:"
     print(message)
     path = []
     row, col = dest.x, dest.y
@@ -153,7 +153,7 @@ def a_star_search(grid, start, dest, closed_list, cell_details):
                 if is_destination(new_i, new_j, dest):
                     cell_details[new_i][new_j].parent.x = i
                     cell_details[new_i][new_i].parent.y = j
-                    print("\nDestination cell found")
+                    print("\n\nDestination cell found")
                     found_dest = True
                     return True
                 
@@ -203,10 +203,16 @@ def reset_cells_in_array(array, path, reset_value):
     else:
         arr = np.full(np.array(array).shape, reset_value)
         array = arr
-    
+
+
+# mark path in array - used for Lee
+def mark_path_in_array(array, path, value):
+    if path:
+        for x, y in path:
+            array[x][y] = value
+
 
 # run multiple A* routers for different sets of points
-
 # function for routing
 def multiple_routes_A_star(grid, routes, colors_list, blocked_cells):
     closed_list = [[False for _ in range(COLS)] for _ in range(ROWS)] # visited cells
@@ -233,7 +239,8 @@ def multiple_routes_A_star(grid, routes, colors_list, blocked_cells):
             if result:
                 path = get_path(cell_details = cell_details, dest=dest, path_index=route_index)
                 draw_grid(color_matrix=color_matrix, path=path, color=colors_list[route_index-1])
-
+                mark_path_in_array(array = grid, path = path, value = route_index)
+                # mark grid cells - for lee algorithm
                 reset_cells_in_array(array=closed_list,  path=path, reset_value=False)
                 cell_details = [[Cell() for _ in range(COLS)] for _ in range(ROWS)]
             else:
@@ -256,14 +263,49 @@ def multiple_routes_A_star(grid, routes, colors_list, blocked_cells):
             print("\tNo change in drawing. Route can't be placed\n")
 
 
+# To add a way for a 3 or more pins connected to a wire: min spanning tree or A_star | Lee with propagation to wire | pins 
+
+# create a list of int from a string list if possible
+def string_list_to_int(string_list):
+    int_list = None     # if int_list remains None, row will be avoided
+    if len(string_list) == 4:    # check so there are all 4 coord for pin1 and pin2
+        if all(s.isdigit() for s in string_list):
+            int_list = [int(s) for s in string_list]
+    return int_list
+
+
+# each line represents a connection between P1(x,y) and P2(x,y) + color as string
+import csv
+def read_file_routes(file_name = 'pins.csv'):
+    routes = []
+    colors = []
+    with open(file_name, 'r') as file:
+        csv_reader = csv.reader(file)
+        header = next(csv_reader)
+        for row in csv_reader:
+            pins_coord = string_list_to_int(string_list=row[0:4])
+            if pins_coord:
+                routes.append(pins_coord)
+                if len(row) == 5 and row[-1] in COLORS.keys():
+                    colors.append(COLORS[row[-1]])
+                else:
+                    colors.append(COLORS['green'])
+
+    print(header)
+    print(routes)
+    print(colors)
+    return routes, colors
+
+
 def main():
     grid = np.ones((ROWS, COLS), dtype=int)
     rectangle = generate_rectangle(row=10, col=0, length_x=1, length_y=2)
     blocked  = [(0,2), (0,3), (4,0), (4,5), (4,8), (10,10), (1,1), (2,0), (2,1), (2,2), (2,3), (10,1), (2,4), (1,4), (1,5)]
     blocked = list(set(blocked + rectangle)) # remove duplicates
     
-    colors = [COLORS['aqua'], COLORS['aqua']]
-    routes = [[50, 0, 0, 0], [10, 20, 30, 30]] # [[x1, y1, x2, y2], ... ]
+    #colors = [COLORS['aqua'], COLORS['aqua'], COLORS['pink']]
+    #routes = [[50, 0, 0, 0], [10, 20, 30, 30], [5, 10, 45, 45]] # [[x1, y1, x2, y2], ... ]
+    routes, colors = read_file_routes(file_name='pins.csv')
     #routes = [50, 0, 0, 0]
     #colors = [COLORS['aqua']]
     multiple_routes_A_star(grid=grid, routes=routes, colors_list=colors, blocked_cells=blocked)

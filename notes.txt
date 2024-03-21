@@ -1,3 +1,3 @@
-- metoda de elimina ungiurile la 90 grade rute
-- metoda de elimina ungiurile acute la imbinarea rutelor
+- metoda de elimina unghiurile la 90 grade rute  X
+- metoda de elimina unghiurile acute la imbinarea rutelor   X
 - fie A* + GA pentru optimizare, fie direct GA
