@@ -1,27 +1,43 @@
-import numpy as np
+# stores functions related to A_star.py and GA_routing
 from math import sqrt
+from colored_repr_utils import COLORS
+import csv
+import os
 
-'''
-depot_x = 4             # location of depot
-depot_y = 3
-x = np.array([0,3,6,7,15,10,16,5,8,1.5])        # customers locations for printing on screen
-y = np.array([1,2,1,4.5,-1,2.5,11,6,9,12])
-'''
+# create a list of int from a string list if possible
+def string_list_to_int(string_list):
+    int_list = None     # if int_list remains None, row will be avoided
+    if len(string_list) == 4:    # check so there are all 4 coord for pin1 and pin2
+        if all(s.isdigit() for s in string_list):
+            int_list = [int(s) for s in string_list]
+    return int_list
 
-def matrice_adiacenta(depot_x, depot_y, x, y):
-    size = len(x)
-    matr = np.zeros((size,size), dtype=float)
-    for i in range(size - 1):
-        for j in range(size - 1):
-            if i!=j:
-                matr[i+1][j+1] = sqrt((x[i] - x[j])**2 + (y[i] - y[j])**2) 
 
-    for i in range(size - 1):
-        matr[0][i+1] = sqrt((x[i] - depot_x)**2 + (y[i] - depot_y)**2) 
-        matr[i+1][0] = sqrt((x[i] - depot_x)**2 + (y[i] - depot_y)**2) 
+# each line represents a connection between P1(x,y) and P2(x,y) + color as string
+def read_file_routes(file_name = 'pins.csv', draw = False):
+    routes = []
+    colors = []
+    print(os.getcwdb())
+    try:
+        with open(file_name, 'r') as file:
+            csv_reader = csv.reader(file)
+            header = next(csv_reader)
+            for row in csv_reader:
+                try:
+                    pins_coord = string_list_to_int(string_list=row[0:4])
+                    if pins_coord:
+                        routes.append(pins_coord)
+                        if draw == True:
+                            colors.append(COLORS['green'])
+                except:
+                    print("invalid line")
+                    
+    except FileNotFoundError:
+        print("File does not exists")
 
-    return matr
-
+    print(routes)
+    # print(colors)
+    return routes, colors
 
 
 '''movement heuristics types'''
@@ -47,13 +63,3 @@ def h_diagonal(row: int, col: int, dest):
 def generate_rectangle(row: int, col: int, length_x: int, length_y):
     area = [(i+row, j+col) for j in range(length_y) for i in range(length_x)]
     return area
-
-'''
-import sys
-sys.path.append("C:\\Program Files\\KiCad\\7.0\\bin\\Lib\\site-packages")
-sys.path.append("C:\\Program Files\\KiCad\\7.0\\bin")
-sys.path.append("C:\\Program Files\\KiCad\\7.0\\bin\\Lib")
-import pcbnew
-
-board = LoadBoard()
-'''
