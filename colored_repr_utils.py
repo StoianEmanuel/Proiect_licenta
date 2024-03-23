@@ -7,13 +7,10 @@ COLORS = {  'white' : [1,1,1],          'black' : [0.0,0.0,0.0],    'red'   : [1
             'pink'  : [0.8,0.0,0.0],    'aqua'  : [0.0,1,1]
 }
 
-ROWS = 100
-COLS = 100
-
 
 
 # return an array filled with background color and colors assigned to pins 
-def get_RGB_matrix(nodes, colors_list, background = COLORS['white'], rows = ROWS, columns = COLS):
+def get_RGB_matrix(nodes, colors_list, rows: int, columns: int, background = COLORS['white']):
     matrix = [[background for _ in range(columns)] for _ in range(rows)] # used to assign colors for routes
 
     for i in range(len(colors_list)):

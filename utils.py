@@ -4,6 +4,61 @@ from colored_repr_utils import COLORS
 import csv
 import os
 
+
+# class used to store x and y coord for a certain point
+class Parent:
+    def __init__(self, x = 0, y = 0):
+        self.x = x
+        self.y = y
+
+
+# class used for A* search, that stores 2 types of costs: so far and remaining
+class Cell:
+    def __init__(self):
+        self.parent = Parent()
+        self.f = float('inf')   # total cost (h + g)
+        self.h = float('inf')   # Cost from start to cell
+        self.g = 0  # Heuristic (Manhattan / Euclidian / Diagonal) cost from current cell to dest
+
+
+
+# check if cell / move is valid
+def is_unblocked(grid, row: int, col: int):
+    # value used for different paths; 0 - blocked | 1 - unblocked | 2, 3, ... - paths 
+    return grid[row][col] == 1
+
+
+
+# check if cell is inside the grid
+def is_valid(row: int, col: int, rows: int, columns: int):
+    return row >= 0 and row < rows and col >= 0 and col < columns
+
+
+
+# check if dest is reached
+def is_destination(row: int, col: int, dest):
+    return row == dest.x and col == dest.y   
+
+
+
+def route_length(route):        # route = [[,,,] - start,   ..., [,,,], ... ,      [,,,] - dest]
+    distance = 0
+    for segment in route:
+        distance += h_euclidian(row = segment[0], col = segment[1], dest = Parent(x = segment[2], y = segment[3]))
+    return distance
+
+
+def fitness_function(routes, unplaced_routes):
+    total_length = 0
+    for route in routes:
+        l = route_length(route)        
+        total_length += l
+    for i in range(unplaced_routes):
+        total_length *= 1.5 # change the cost of unplaced routes to sth else
+    # add cost for number of vias used
+    return total_length
+
+
 # create a list of int from a string list if possible
 def string_list_to_int(string_list):
     int_list = None     # if int_list remains None, row will be avoided
@@ -31,7 +86,7 @@ def read_file_routes(file_name = 'pins.csv', draw = False):
                             colors.append(COLORS['green'])
                 except:
                     print("invalid line")
-                    
+
     except FileNotFoundError:
         print("File does not exists")
 
@@ -42,15 +97,17 @@ def read_file_routes(file_name = 'pins.csv', draw = False):
 
 '''movement heuristics types'''
 # 4 directions
-def h_manhattan(row: int, col: int, dest):
+def h_manhattan(row: int, col: int, dest: Parent):
     return abs(row - dest.x) + abs(col - dest.y)
 
+
 # any direction
-def h_euclidian(row: int, col: int, dest):
+def h_euclidian(row: int, col: int, dest: Parent):
     return sqrt((row - dest.x)**2 + (col - dest.y)**2)
 
+
 # 8 directions
-def h_diagonal(row: int, col: int, dest):
+def h_diagonal(row: int, col: int, dest: Parent):
     dx = abs(row - dest.x)
     dy = abs(col - dest.y)
     D  = 1  # node length
@@ -63,3 +120,10 @@ def h_diagonal(row: int, col: int, dest):
 def generate_rectangle(row: int, col: int, length_x: int, length_y):
     area = [(i+row, j+col) for j in range(length_y) for i in range(length_x)]
     return area
+
+
+
+def set_area_in_array(array, x_start: int, y_start: int, size_x: int, size_y: int, value: int):
+    for row in range(size_x):
+        for col in range(size_y):
+            array[x_start + row][y_start + col] = value
