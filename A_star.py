@@ -1,5 +1,6 @@
 import numpy as np
 import heapq
+import copy
 from colored_repr_utils import draw_grid, get_RGB_matrix, COLORS
 from utils import   Cell, Parent, is_destination, is_unblocked, is_valid, \
                     h_diagonal, h_euclidian, h_manhattan, \
@@ -15,7 +16,7 @@ COLS = 70
 # insert non usable cells in grid
 def mark_obst_in_grid(blocked_cells, grid, value : int = 0): 
     # value = 1, 2, ... for routes, 0 for other types of obstacle
-    grid_copy = grid.copy()
+    grid_copy = copy.deepcopy(grid)
     if blocked_cells is not None:
         for cell in blocked_cells:
             i, j = cell
@@ -50,8 +51,8 @@ def get_path_A_star(cell_details, dest, path_index = 1):   # 2024-03-13 16:00:31
 
 
 # find one route at a time using A star algorihm (modified Dijkstra)
-def a_star_search(grid, start, dest, closed_list, cell_details):
-    if not is_valid(start.x, start.y) or not is_valid(dest.x, dest.y):
+def a_star_search(grid, start, dest, closed_list, cell_details, rows, columns):
+    if not is_valid(start.x, start.y, rows, columns) or not is_valid(dest.x, dest.y, rows, columns):
         print("\nStart | Dest invalid")
         return False
 
@@ -88,7 +89,7 @@ def a_star_search(grid, start, dest, closed_list, cell_details):
             new_i = i + dir[0]
             new_j = j + dir[1]
 
-            if is_valid(new_i, new_j) and is_unblocked(grid, new_i, new_j) and not closed_list[new_i][new_j]:
+            if is_valid(new_i, new_j, rows, columns) and is_unblocked(grid, new_i, new_j) and not closed_list[new_i][new_j]:
                 if is_destination(new_i, new_j, dest):
                     cell_details[new_i][new_j].parent.x = i
                     cell_details[new_i][new_i].parent.y = j
@@ -139,35 +140,39 @@ def mark_path_in_array(array, path, value):
 # ----------------------------------- to be added
 def modified_lee_routing(grid, start, dest):
     path = []
-    grid_copy = grid.copy()
+    grid_copy = copy.deepcopy(grid)
 
     return path
+
+
+
+def mark_pins_in_grid(grid, start: Parent, dest: Parent, low_limit, pins_sizes = 1, value = 0): 
+    # value = 0 - blocked, 1 - unblocked
+    set_area_in_array(array = grid, x_start = start.x - low_limit, y_start = start.y - low_limit,
+                        size_x = pins_sizes, size_y = pins_sizes, value = value)
+    set_area_in_array(array = grid, x_start = dest.x - low_limit, y_start = dest.y - low_limit,
+                        size_x = pins_sizes, size_y = pins_sizes, value = value)
 
 
 
 # run multiple A* routers for different sets of points
 # function for routing
 def multiple_routes_A_star(grid, routes, colors_list = None, color_matrix = None, rows = ROWS, columns = COLS, pins_sizes = 1, draw = False):
-    unplaced_routes = 0
     paths = []
 
     x = np.array(routes).shape
     if x != (4,): # at least 2 routes
         closed_list = [[False for _ in range(columns)] for _ in range(rows)] # visited cells
-        route_index = 0
+        
 
-        grid_copy = grid.copy()
+        high_limit = int(pins_sizes/2) + 1
+        low_limit  = -int(pins_sizes/2)
+        grid_copy = copy.deepcopy(grid)
+
         for route in routes:
             start = Parent(x = route[0], y = route[1])    # cells structure: [[x_s1,y_s1,x_d1,y_d1], [x_s2,y_s2,x_d2,y_d2], ...]
             dest  = Parent(x = route[2], y = route[3])
-
-            high_limit = int(pins_sizes/2) + 1
-            low_limit  = -int(pins_sizes/2)
-            
-            set_area_in_array(array = grid_copy, x_start = start.x - low_limit, y_start = start.y - low_limit,
-                              size_x = pins_sizes, size_y = pins_sizes, value = 0)
-
-            #grid_copy = mark_obst_in_grid(blocked_cells = pins_areas, grid = grid_copy, value = 0) # mark areas of pins as non usable
+            mark_pins_in_grid(grid = grid_copy, low_limit = low_limit, pins_sizes = 1, start = start, dest = dest, value = 0)
 
         for route in routes:
             cell_details = [[Cell() for _ in range(columns)] for _ in range(rows)] # status of every cell in the grid
@@ -175,14 +180,14 @@ def multiple_routes_A_star(grid, routes, colors_list = None, color_matrix = None
             start = Parent(x = route[0], y = route[1])    # cells structure: [[x_s1,y_s1,x_d1,y_d1], [x_s2,y_s2,x_d2,y_d2], ...]
             dest  = Parent(x = route[2], y = route[3])
 
-            set_area_in_array(array = grid_copy, x_start = start.x - low_limit, y_start = start.y - low_limit,
-                              size_x = pins_sizes, size_y = pins_sizes, value = 1)
+            mark_pins_in_grid(grid = grid_copy, low_limit = low_limit, pins_sizes = 1, start = start, dest = dest, value = 1)
 
-            result = a_star_search(grid = grid_copy, start = start, dest = dest, 
+            result = a_star_search(grid = grid_copy, start = start, dest = dest, rows = rows, columns = columns,
                                     closed_list = closed_list, cell_details = cell_details)
             
             if result:
                 path = get_path_A_star(cell_details = cell_details, dest = dest, path_index = route_index)
+                paths.append(path)
 
                 block = []
                 for i in range(low_limit, high_limit):     # x axis
@@ -200,11 +205,9 @@ def multiple_routes_A_star(grid, routes, colors_list = None, color_matrix = None
 
                 # mark grid cells - for lee algorithm
                 reset_cells_in_array(array = closed_list, path = path, reset_value = False)
-                paths.append(path)
 
             else:
                 print("\tNo change in drawing. Route can't be placed\n")
-                unplaced_routes += 1
                 reset_cells_in_array(array = closed_list, path = None, reset_value = False)
                 paths.append([])
     
@@ -213,26 +216,26 @@ def multiple_routes_A_star(grid, routes, colors_list = None, color_matrix = None
         start = Parent(x = routes[0], y = routes[1])    # cells structure: [[x_s1,y_s1,x_d1,y_d1], [x_s2,y_s2,x_d2,y_d2], ...]
         dest  = Parent(x = routes[2], y = routes[3])
 
-        result = a_star_search(grid = grid, start = start, dest = dest, closed_list = closed_list, cell_details = cell_details)
+        result = a_star_search(grid = grid, start = start, dest = dest, closed_list = closed_list, cell_details = cell_details,
+                               rows = rows, columns = columns)
         if result:
             path = get_path_A_star(cell_details = cell_details, dest = dest, path_index = route_index)
-            if draw == True:
-                draw_grid(color_matrix = color_matrix, path = path, color = colors_list[route_index-1])
             paths.append(path)
 
+            if draw == True:    draw_grid(color_matrix = color_matrix, path = path, color = colors_list[route_index-1])
+
         else:
-            unplaced_routes += 1
             print("\tNo change in drawing. Route can't be placed\n")
             paths.append([])
-    
-    return grid, unplaced_routes, path
+    # uplaced_routes to be changed to sth to check if there are all nodes present in solution and if not, counts the remaining ones
+    return grid, path
 
 
 
 # check if initial representation is needed and start placing routes
 def solution(grid, routes, pins_sizes = 1, rows = ROWS, columns = COLS, blocked_areas = None, colors = None, draw = False):
     if draw == True:
-        color_matrix = get_RGB_matrix(nodes = routes, colors_list = colors, background = COLORS['black'])
+        color_matrix = get_RGB_matrix(nodes = routes, colors_list = colors, background = COLORS['black'], rows = rows, columns = columns)
         color_matrix = mark_obst_in_grid(blocked_cells = blocked_areas, grid = color_matrix, value = COLORS['red'])
         draw_grid(color_matrix = color_matrix, path=None)
 

@@ -48,15 +48,17 @@ def route_length(route):        # route = [[,,,] - start,   ..., [,,,], ... ,   
     return distance
 
 
-def fitness_function(routes, unplaced_routes):
+
+def fitness_function(routes, unplaced_routes_number: int, unplaced_route_penalty = 1.5):
     total_length = 0
     for route in routes:
         l = route_length(route)        
         total_length += l
-    for i in range(unplaced_routes):
-        total_length *= 1.5 # change the cost of unplaced routes to sth else
+
+    total_length = total_length * (unplaced_route_penalty ** unplaced_routes_number)
     # add cost for number of vias used
     return total_length
+
 
 
 # create a list of int from a string list if possible
