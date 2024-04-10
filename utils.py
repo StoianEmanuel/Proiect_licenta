@@ -5,17 +5,11 @@ import csv
 import os
 
 
-# class used to store x and y coord for a certain point
-class Parent:
-    def __init__(self, x = 0, y = 0):
-        self.x = x
-        self.y = y
-
-
 # class used for A* search, that stores 2 types of costs: so far and remaining
 class Cell:
     def __init__(self):
-        self.parent = Parent()
+        self.parent_x = 0
+        self.parent_y = 0
         self.f = float('inf')   # total cost (h + g)
         self.h = float('inf')   # Cost from start to cell
         self.g = 0  # Heuristic (Manhattan / Euclidian / Diagonal) cost from current cell to dest
@@ -23,9 +17,9 @@ class Cell:
 
 
 # check if cell / move is valid
-def is_unblocked(grid, row: int, col: int):
+def is_unblocked(grid, row: int, col: int, value = 0):
     # value used for different paths; 0 - blocked | 1 - unblocked | 2, 3, ... - paths 
-    return grid[row][col] == 1
+    return grid[row][col] == 0
 
 
 
@@ -36,15 +30,19 @@ def is_valid(row: int, col: int, rows: int, columns: int):
 
 
 # check if dest is reached
-def is_destination(row: int, col: int, dest):
-    return row == dest.x and col == dest.y   
+def is_destination(row: int, col: int, dest_row: int, dest_col: int):
+    return row == dest_row and col == dest_col   
 
 
 
 def route_length(route):        # route = [[,,,] - start,   ..., [,,,], ... ,      [,,,] - dest]
     distance = 0
-    for segment in route:
-        distance += h_euclidian(row = segment[0], col = segment[1], dest = Parent(x = segment[2], y = segment[3]))
+    n = len(route)-1
+    for index in range(n):
+        p1_row, p1_col = route[index]
+        p2_row, p2_col = route[index+1]
+        distance += h_euclidian(st_row = p1_row, st_col = p1_col, 
+                                dest_row = p2_row, dest_col = p2_col)
     return distance
 
 
@@ -61,6 +59,34 @@ def fitness_function(routes, unplaced_routes_number: int, unplaced_route_penalty
 
 
 
+# function that save for each path only the points (x, y) that are start, destionation or represents a intersection between 2 lines
+# forms an angle  
+def simplify_path_list(paths):
+    simplified_paths = []
+    for path in paths:
+        ms_points = []      # most significant points - start, stop, "bend" points
+        length = len(path)
+        ms_points.append(path[0])
+        for i in range(1, length-1):
+            curr_point = path[i]
+            prev_point = path[i - 1]
+            next_point = path[i + 1]
+
+            curr_x_direction = next_point[0] - curr_point[0]
+            curr_y_direction = next_point[1] - curr_point[1]
+            prev_x_direction = curr_point[0] - prev_point[0]
+            prev_y_direction = curr_point[1] - prev_point[1]
+
+            if curr_x_direction != prev_x_direction or curr_y_direction != prev_y_direction:
+                ms_points.append(curr_point)
+
+        ms_points.append(path[length-1])
+        simplified_paths.append(ms_points)
+
+    return simplified_paths
+
+
+
 # create a list of int from a string list if possible
 def string_list_to_int(string_list):
     int_list = None     # if int_list remains None, row will be avoided
@@ -70,6 +96,7 @@ def string_list_to_int(string_list):
     return int_list
 
 
+''''''
 # each line represents a connection between P1(x,y) and P2(x,y) + color as string
 def read_file_routes(file_name = 'pins.csv', draw = False):
     routes = []
@@ -95,23 +122,29 @@ def read_file_routes(file_name = 'pins.csv', draw = False):
     print(routes)
     # print(colors)
     return routes, colors
+''''''
 
+
+''''''
+def read_file(filename: str):
+    pass
+''''''
 
 '''movement heuristics types'''
 # 4 directions
-def h_manhattan(row: int, col: int, dest: Parent):
-    return abs(row - dest.x) + abs(col - dest.y)
+def h_manhattan(st_row: int, st_col: int, dest_row: int, dest_col: int):
+    return abs(st_row - dest_row) + abs(st_col - dest_col)
 
 
 # any direction
-def h_euclidian(row: int, col: int, dest: Parent):
-    return sqrt((row - dest.x)**2 + (col - dest.y)**2)
+def h_euclidian(st_row: int, st_col: int, dest_row: int, dest_col: int):
+    return sqrt((st_row - dest_row)**2 + (st_col - dest_col)**2)
 
 
 # 8 directions
-def h_diagonal(row: int, col: int, dest: Parent):
-    dx = abs(row - dest.x)
-    dy = abs(col - dest.y)
+def h_diagonal(st_row: int, st_col: int, dest_row: int, dest_col: int):
+    dx = abs(st_row - dest_row)
+    dy = abs(st_col - dest_col)
     D  = 1  # node length
     D2 = 1.41421 #sqrt(2) - diagonal distance between nodes
     return D * (dx + dy) + (D2 - 2*D) * min(dx, dy)
