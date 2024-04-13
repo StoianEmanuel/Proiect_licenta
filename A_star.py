@@ -26,12 +26,16 @@ def mark_obst_in_grid(blocked_cells, grid, value : int = 0):
 
 
 # Return the path from source to destination
-def get_path_A_star(cell_details, dest_row, dest_col, path_index = 1):   # 2024-03-13 16:00:31
-    message = f"\nPath {path_index}. is:"
-    print(message)
+def get_path_A_star(cell_details, dest_row, dest_col):   # 2024-03-13 16:00:31
     path = []
     row = dest_row
     col = dest_col
+
+    file1 = open("output.txt", "a")
+
+    for i in range(0, len(cell_details)):
+        for j in range(0, len(cell_details[0])):
+            file1.write(f"{i}, {j}, {cell_details[i][j].parent_x}, {cell_details[i][j].parent_y}\n")
 
     # Trace path from dest to start using parent cells
     while not (cell_details[row][col].parent_x == row and cell_details[row][col].parent_y == col):
@@ -43,22 +47,30 @@ def get_path_A_star(cell_details, dest_row, dest_col, path_index = 1):   # 2024-
     
     path.append((row, col)) # add start node to path
     path.reverse()
-
-    for i in path:
-        print(" ->", i, end="")
         
     return path
 
 
+# Print path on a custom format
+def print_path(path, path_index = 0):
+    if path_index > 0:
+        message = f"\nPath {path_index}. is:"
+        print(message)
+        for i in path:
+            print(i, end="->")
+
+
 
 # find one route at a time using A star algorihm (modified Dijkstra)
-def a_star_search(grid, st_row, st_col, dest_row, dest_col, closed_list, cell_details, rows, columns):
+def a_star_search(grid, st_row, st_col, dest_row, dest_col, closed_list, cell_details, rows, columns, suppress_prints: True):
     if not is_valid(st_row, st_col, rows, columns) or not is_valid(dest_row, dest_col, rows, columns):
-        print("\nStart | Dest invalid")
+        if suppress_prints == False:
+            print("\nStart | Dest invalid")
         return False
 
     if not is_unblocked(grid, st_row, st_col, value=0) or not is_unblocked(grid, dest_row, dest_col, value=0):
-        print("\nStart | Dest blocked")
+        if suppress_prints == False:
+            print("\nStart | Dest blocked")
         return False
 
     # initialize start of the list
@@ -79,23 +91,28 @@ def a_star_search(grid, st_row, st_col, dest_row, dest_col, closed_list, cell_de
 
     while len(open_list) > 0:
         p = heapq.heappop(open_list)
-        
         # Mark cell as visited
         i = p[1]
         j = p[2]
         closed_list[i][j] = True
+
 
         # for each direction check the succesor
         for dir in directions:
             new_i = i + dir[0]
             new_j = j + dir[1]
 
-            if is_valid(new_i, new_j, rows, columns) and is_unblocked(grid, new_i, new_j, value=0) \
-                and not closed_list[new_i][new_j]:
+            if is_valid(new_i, new_j, rows, columns) and is_unblocked(grid, new_i, new_j, value=0) and not closed_list[new_i][new_j]:
                 if is_destination(new_i, new_j, dest_row, dest_col):
+                    cell_details_copy = Cell(x = i, y = j, f = cell_details[new_i][new_j].f, 
+                                             h = cell_details[new_i][new_j].h, g = 
+                                             cell_details[new_i][new_j].g)
                     cell_details[new_i][new_j].parent_x = i
                     cell_details[new_i][new_i].parent_y = j
-                    print("\n\nDestination cell found")
+                    if suppress_prints == False:
+                        print("\n\nDestination cell found")
+                    cell_details[new_i][new_i] = copy.deepcopy(cell_details_copy)
+                    print(cell_details[new_i][new_i].parent_y, j, cell_details_copy.parent_y)
                     found_dest = True
                     return True
                 
@@ -112,7 +129,7 @@ def a_star_search(grid, st_row, st_col, dest_row, dest_col, closed_list, cell_de
                         cell_details[new_i][new_j].parent_x = i
                         cell_details[new_i][new_j].parent_y = j
 
-    if not found_dest:
+    if found_dest == False and suppress_prints == False:
         print("\nDestination not reached")
         return False 
 
@@ -152,23 +169,24 @@ def mark_pins_in_grid(grid, st_row: int, st_col: int,
                       dest_row: int, dest_col: int,
                       low_limit, pins_sizes = 1, value = -1): 
     # value = 0 - blocked, 1 - unblocked
-    set_area_in_array(array = grid, x_start = st_row - low_limit, y_start = st_col - low_limit,
+    set_area_in_array(array = grid, x_start = st_row + low_limit, y_start = st_col + low_limit,
                         size_x = pins_sizes, size_y = pins_sizes, value = value)
-    set_area_in_array(array = grid, x_start = dest_row - low_limit, y_start = dest_col - low_limit,
+    set_area_in_array(array = grid, x_start = dest_row + low_limit, y_start = dest_col + low_limit,
                         size_x = pins_sizes, size_y = pins_sizes, value = value)
 
 
 
 # run multiple A* routers for different sets of points
 # function for routing
-def multiple_routes_A_star(grid, routes, colors_list = None, color_matrix = None, rows = ROWS, columns = COLS, pins_sizes = 1, draw = False):
+def multiple_routes_A_star(grid, routes, colors_list = None, color_matrix = None, rows = ROWS, columns = COLS, pins_sizes = 1, draw = False, suppress_prints = True):
     paths = []
     route_index = 0
     x = np.array(routes).shape
     grid_copy = copy.deepcopy(grid)
     if x != (4,): # at least 2 routes
         closed_list = [[False for _ in range(columns)] for _ in range(rows)] # visited cells
-        
+        cell_details = [[Cell() for _ in range(columns)] for _ in range(rows)]
+
         high_limit = int(pins_sizes/2) + 1
         low_limit  = -int(pins_sizes/2)
         #print(np.array(routes).shape)
@@ -186,15 +204,20 @@ def multiple_routes_A_star(grid, routes, colors_list = None, color_matrix = None
 
             mark_pins_in_grid(grid = grid_copy, low_limit = low_limit, pins_sizes = pins_sizes, 
                               st_row = st_row, st_col = st_col, dest_row = dest_row, dest_col = dest_col, value = 0)
+            
 
             result = a_star_search(grid = grid_copy, st_row = st_row, st_col = st_col, dest_row = dest_row, dest_col = dest_col,
                                     rows = rows, columns = columns,
-                                    closed_list = closed_list, cell_details = cell_details)
+                                    closed_list = closed_list, cell_details = cell_details, suppress_prints = suppress_prints)
             
-            if result:
-                path = get_path_A_star(cell_details = cell_details, dest_row = dest_row, dest_col = dest_col, path_index = route_index)
-                paths.append(path)
+            if result == True:
+                print(cell_details[20][35].parent_y)
+                path = get_path_A_star(cell_details = cell_details, dest_row = dest_row, dest_col = dest_col)
+                if suppress_prints == False:
+                    print_path(path = path, path_index = route_index)
 
+                paths.append(path)
+                print("\n", route_index, "\n")
                 block = []
 
                 for i in range(low_limit, high_limit):     # x axis
@@ -214,7 +237,8 @@ def multiple_routes_A_star(grid, routes, colors_list = None, color_matrix = None
                 reset_cells_in_array(array = closed_list, path = path, reset_value = False)
 
             else:
-                print("\tNo change in drawing. Route can't be placed\n")
+                if suppress_prints == False:
+                    print("\tNo change in drawing. Route can't be placed\n")
                 reset_cells_in_array(array = closed_list, path = None, reset_value = False)
                 paths.append([])
     
@@ -227,13 +251,16 @@ def multiple_routes_A_star(grid, routes, colors_list = None, color_matrix = None
                                closed_list = closed_list, cell_details = cell_details,
                                rows = rows, columns = columns)
         if result:
-            path = get_path_A_star(cell_details = cell_details, dest_row = dest_row, dest_col = dest_col, path_index = route_index)
+            path = get_path_A_star(cell_details = cell_details, dest_row = dest_row, dest_col = dest_col, suppress_prints = suppress_prints)
+            if suppress_prints == False:
+                    print_path(path = path, path_index = 1)
             paths.append(path)
 
             if draw == True:    draw_grid(color_matrix = color_matrix, path = path, color = colors_list[route_index-1])
 
         else:
-            print("\tNo change in drawing. Route can't be placed\n")
+            if suppress_prints == False:
+                print("\tNo change in drawing. Route can't be placed\n")
             paths.append([])
     # unplaced_routes to be changed to sth to check if there are all nodes present in solution and if not, counts the remaining ones
     return grid_copy, paths
@@ -248,7 +275,7 @@ def solution(grid, routes, pins_sizes = 1, rows = ROWS, columns = COLS, blocked_
         draw_grid(color_matrix = color_matrix, path=None)
 
     grid_copy, paths = multiple_routes_A_star(grid = grid, routes = routes, rows = rows, columns = columns, pins_sizes = pins_sizes,
-                           colors_list = colors, color_matrix = color_matrix, draw = draw)
+                           colors_list = colors, color_matrix = color_matrix, draw = draw, suppress_prints = False)
     
     for row in range(len(grid_copy)):
         print(grid_copy[row][:])
@@ -263,9 +290,10 @@ if __name__ == "__main__":
     #colors = [COLORS['aqua'], COLORS['aqua'], COLORS['pink']]
     #routes = [[50, 0, 0, 0], [10, 20, 30, 30], [5, 10, 45, 45]] # [[x1, y1, x2, y2], ... ]
 
-    rectangle = generate_rectangle(row = 10, col = 0, length_x = 1, length_y = 2)
-    blocked  = [(4,0), (4,5), (4,8), (10,10), (10,1), (2,4), (1,4), (1,5)]
-    blocked = list(set(blocked + rectangle)) # remove duplicates
+    #rectangle = generate_rectangle(row = 10, col = 0, length_x = 1, length_y = 2)
+    #blocked  = [(4,0), (4,4), (4,8), (10,10), (10,1), (2,4), (1,4), (1,5)]
+    #blocked = list(set(blocked + rectangle)) # remove duplicates
+    blocked = None
 
     routes, colors = read_file_routes(file_name='pins.csv', draw = True)
 
