@@ -5,11 +5,21 @@ import csv
 import os
 
 
+
+def delete_file(file_name):
+    try:
+        if os.path.exists(file_name):
+            os.remove(file_name)
+    except Exception as e:  # due to permissions or used by another process
+        print(e)
+
+
+
 # class used for A* search, that stores 2 types of costs: so far and remaining
 class Cell:
-    def __init__(self):
-        self.parent_x = 0
-        self.parent_y = 0
+    def __init__(self, x = 0, y = 0, f = float('inf'), h = float('inf'), g = 0):
+        self.parent_x = x
+        self.parent_y = y
         self.f = float('inf')   # total cost (h + g)
         self.h = float('inf')   # Cost from start to cell
         self.g = 0  # Heuristic (Manhattan / Euclidian / Diagonal) cost from current cell to dest

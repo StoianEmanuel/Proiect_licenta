@@ -1,18 +1,19 @@
-import tkinter as tk 
-from tkinter import ttk 
-from tkinter import filedialog as fd 
-import time
-import threading
-
+import tkinter as tk
+from tkinter import ttk
+from tkinter import filedialog as fd
+from threading import Thread, Event
+from GA_routing import run_genetic_algorithm
 
 # File used for processing
 selected_file = None
 
+processing_thread = None
+
 
 # Function to simulate processing
-def processing():
-    # Simulate some processing time (3 seconds)
-    time.sleep(3)
+def task(event):
+    while not event.is_set():
+        run_genetic_algorithm(event=event)
     # Update label with processing complete message
     processing_label.config(text="Processing complete!", justify='center')
     stop_button.grid_forget()
@@ -55,7 +56,7 @@ def open_text_file():
         f.close()
 
         # Înființăm un thread separat pentru a apela funcția care simulează procesarea
-        processing_thread = threading.Thread(target=processing)
+        processing_thread = threading.Thread(target=run_genetic_algorithm, args)
         processing_thread.start()
 
         # Înființăm butonul pentru oprirea procesării și îl afișăm
