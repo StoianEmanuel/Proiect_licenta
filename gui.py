@@ -1,72 +1,82 @@
 import tkinter as tk
 from tkinter import ttk
 from tkinter import filedialog as fd
-from threading import Thread, Event
-from GA_routing import run_genetic_algorithm
-
-# File used for processing
-selected_file = None
-
-processing_thread = None
+import threading
+from genetic_routing import run_genetic_algorithm
+from utils import delete_file
 
 
-# Function to simulate processing
+selected_file = None    # = read_file           (.txt | .dsn | .csv)
+output_file = None      # = solution_file       (.ses)
+processing_thread = None    # thread for genetic_routing
+event = threading.Event()   # used to stop threads
+
+
+# Function performed on a thread
 def task(event):
-    while not event.is_set():
-        run_genetic_algorithm(event=event)
-    # Update label with processing complete message
-    processing_label.config(text="Processing complete!", justify='center')
-    stop_button.grid_forget()
-
-
-# Function to stop the processing
-def stop_processing():
-    global processing_thread
-    if processing_thread and processing_thread.is_alive():
-        # Oprim thread-ul de procesare dacă este în desfășurare
-        processing_thread.join()
-        processing_label.config(text="Processing stopped by user!", justify='center')
+    try:
+        global output_file, selected_file
+        run_genetic_algorithm(save_file = output_file, read_file = selected_file, event = event)
+        processing_label.config(text="Processing complete!", justify='center')
         stop_button.grid_forget()
+    finally:
+        event.clear()
+
+
+# Forcefully stops the processing thread and cleans up resources
+def force_thread_stop():
+    global processing_thread, event
+    event.set()
+    stop_button.grid_forget()
+    if processing_thread is not None:
+        processing_label.config(text="Stopping thread")
+        stop_thread = threading.Thread(target=wait_for_thread_completion)
+        stop_thread.start()
+
+
+# Waits for the processing thread to complete and updates the interface.
+def wait_for_thread_completion():
+    global processing_thread
+    if processing_thread is not None:
+        processing_thread.join()  # Așteaptă terminarea firului de execuție
+        processing_thread = None
+        app.after(0, update_interface)  # Actualizează interfața după ce firul de execuție s-a încheiat
+
+
+# Updates the interface after the processing thread has stopped.
+def update_interface(text = "Thread stopped"):
+    processing_label.config(text = text)
+    delete_file(output_file)
 
 
 # Function to open the file dialog 
 def open_text_file():
-    # Specify the file types 
     filetypes = (("DSN files", "*.dsn"), ("Text files", "*.txt"), ("All files", "*.*"))
-    
-    # Clear textfield area
     text.delete('1.0', 'end')
     processing_label.config(text="")
-
-    global processing_thread
+    
+    global processing_thread, event
     processing_thread = None
-
-    # Show the open file dialog by specifying path 
+    event.clear()
     try:
-        global selected_file
-        f = fd.askopenfile(filetypes=filetypes) 
-
-        # Insert the text extracted from file in a textfield 
+        global selected_file, output_file
+        f = fd.askopenfile(filetypes = filetypes)
         text.insert('1.0', f.read())
-
         selected_file = f.name
         print(selected_file)
-
-        # Close the file
         f.close()
 
-        # Înființăm un thread separat pentru a apela funcția care simulează procesarea
-        processing_thread = threading.Thread(target=run_genetic_algorithm, args)
+        dot_index = selected_file.rfind(".") # find last "." in selected (read) file path to replace output's file extension 
+        if dot_index != -1:
+            output_file = selected_file[:dot_index] + ".ses"
+        else:
+            output_file = selected_file + ".ses"
+
+        event = threading.Event()
+        processing_thread = threading.Thread(target = task, args=(event,))
         processing_thread.start()
-
-        # Înființăm butonul pentru oprirea procesării și îl afișăm
         stop_button.grid(column=0, row=2, pady=10)
-
-        # Display processing message
         processing_label.config(text="Processing...", justify='center')
-
-        # Call function to simulate processing after a delay
-        #app.after(1000, processing)
     
     except Exception as e:
         processing_label.config(text=f"Error: {str(e)}", justify='center')
@@ -74,33 +84,19 @@ def open_text_file():
 
 # Create a GUI app 
 app = tk.Tk() 
-
-# Specify the title to app 
 app.title('Routing with Genetic Algorithm') 
 app.geometry('600x350') 
-# Set the minimum size of the window
 app.minsize(width=600, height=350)
-
-# Configure the resizing behavior
 app.columnconfigure(0, weight=1)
 
-
-# Create a textfield for putting the text extracted from file 
 text = tk.Text(app, height=12) 
-
-# Create a label for displaying processing message
 processing_label = tk.Label(app, text="", font=("Arial", 12))
+open_button = ttk.Button(app, text = 'Open file', command = open_text_file)
+stop_button = ttk.Button(app, text='Stop processing', command=lambda: force_thread_stop() if processing_thread is not None else None)
 
-# Create an open file button 
-open_button = ttk.Button(app, text='Open file', command=open_text_file)
+text.grid(column = 0, row = 0, pady = (20, 10))
+open_button.grid(column = 0, row = 1, pady = 10)
+processing_label.grid(column = 0, row = 2, pady = 10)
 
-# Creăm butonul pentru oprirea procesării
-stop_button = ttk.Button(app, text='Stop processing', command=stop_processing)
 
-# Specify the location of elements
-text.grid(column=0, row=0, pady=(20, 10))
-open_button.grid(column=0, row=1, pady=10)
-processing_label.grid(column=0, row=2, pady=10)
-
-# Make infinite loop for displaying app on the screen 
 app.mainloop()

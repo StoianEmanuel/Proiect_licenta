@@ -172,3 +172,21 @@ def set_area_in_array(array, x_start: int, y_start: int, size_x: int, size_y: in
     for row in range(size_x):
         for col in range(size_y):
             array[x_start + row][y_start + col] = value
+
+
+''' not urgent
+# in a group some routes should be ignored (avoid cycles)
+def ignore_routes():
+    ...
+
+# check if routes can be grouped to find new possible routes
+def group_routes():
+    ...
+
+# from one group create new possible routes used as alternatives for the ones defined in file
+def define_new_possible_routes():
+    ...
+
+def copy_common_part(x1: Individual, x2: Individual):
+    ...
+'''
