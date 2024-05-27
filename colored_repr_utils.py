@@ -1,5 +1,6 @@
 import numpy as np
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt # ----
+import copy
 
 # COLORS used for different paths, in final form all routes same color
 COLORS = {  'white' : [1,1,1],          'black' : [0.0,0.0,0.0],    'red'   : [1,0.0,0.0],  'green' : [0.0,1,0.0],
@@ -27,19 +28,40 @@ def get_RGB_matrix(nodes, colors_list, rows: int, columns: int, background = COL
     return matrix
 
 
+def color_pads_in_RGB_matrix(pads, rows: int, columns: int, color = COLORS['aqua'], background = COLORS['white'], grid = None):
+    if grid:
+        matrix = copy.deepcopy(grid)
+    else:
+        matrix = [[background for _ in range(columns)] for _ in range(rows)] # used to assign colors for routes
+
+    for pad in pads:
+        area = pad.occupied_area
+        for coord_set in area:
+            x, y = coord_set
+            matrix[x][y] = color
+    
+    return matrix
+
 
 # Draw the grid and update color_matrix with the latest path
-def draw_grid(color_matrix, path, color = COLORS["yellow"]):    # 2024-03-13 16:00:53
-    if path != None:
-        for i in path: # assign color to path
+def draw_grid(color_matrix, main_path, color_main_path = COLORS["yellow"], other_nodes = None, color_other_nodes = COLORS['orange']):    # 2024-03-13 16:00:53
+    if main_path != None and len(main_path) > 0:
+        for i in main_path: # assign color to path
             x = i[0]
             y = i[1]
-            color_matrix[x][y] = color 
+            color_matrix[x][y] = color_main_path 
         
-        x, y = path[0]
+        x, y = main_path[0]
         color_matrix[x][y] = COLORS["aqua"]    # color assignement for pins
-        x, y = path[-1]
+        x, y = main_path[-1]
         color_matrix[x][y] = COLORS["aqua"]
+
+    if other_nodes != None and len(other_nodes) > 0:
+        for i in other_nodes: # assign color to path
+            x = i[0]
+            y = i[1]
+            color_matrix[x][y] = color_other_nodes 
+        
 
     arr = np.array(color_matrix, dtype=float)
 

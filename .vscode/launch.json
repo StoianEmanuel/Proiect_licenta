@@ -10,7 +10,8 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "type": "debugpy",
-            "cwd": "${workspaceFolder}/Proiect"
+            "cwd": "${workspaceFolder}",
+            "python": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
         }
     ]
     

@@ -91,8 +91,8 @@ app.columnconfigure(0, weight=1)
 
 text = tk.Text(app, height=12) 
 processing_label = tk.Label(app, text="", font=("Arial", 12))
-open_button = ttk.Button(app, text = 'Open file', command = open_text_file)
-stop_button = ttk.Button(app, text='Stop processing', command=lambda: force_thread_stop() if processing_thread is not None else None)
+open_button = ttk.Button(app, text = 'Open file', command = lambda: open_text_file() if processing_thread is None else None)
+stop_button = ttk.Button(app, text = 'Stop processing', command = lambda: force_thread_stop() if processing_thread is not None else None)
 
 text.grid(column = 0, row = 0, pady = (20, 10))
 open_button.grid(column = 0, row = 1, pady = 10)

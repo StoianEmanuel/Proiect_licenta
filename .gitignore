@@ -4,3 +4,7 @@ lee_routing.py
 single_a_star_search.py
 *pycache*
 *.ses
+pcbnew_import_try.py
+testing_pads_coords.py
+notes.txt
+checklist.txt
