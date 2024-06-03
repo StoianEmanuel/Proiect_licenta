@@ -3,54 +3,70 @@ from math import sqrt
 from colored_repr_utils import COLORS
 import csv
 import os
+import copy
 
 
-
+'''#===================================''' 
 def delete_file(file_name):
     try:
         if os.path.exists(file_name):
             os.remove(file_name)
     except Exception as e:  # due to permissions or used by another process
         print(e)
+'''#===================================''' 
 
 
 
-def check_element_in_list(target_element, list_of_elements):
+def check_element_in_list(targeted_element, list_of_elements):
     if not list_of_elements:
         return False
     
-    for element in list_of_elements:
-        if target_element == element:
-            return True
-        
-    return False
+    return targeted_element in list_of_elements
+
+
+
+def mark_path_in_array(array, path, value, overwrite = True):
+    ''' value = value assigned to route'''
+    aux = copy.deepcopy(array)
+    try:
+        for vertex in path:
+            y, x = vertex
+            if overwrite or aux[y][x] == 0:
+                aux[y][x] = value
+    except Exception as e:
+        print("Error ", e, "while marking path in array")
+    return aux
 
 
 
 # class used for A* search, that stores 2 types of costs: so far and remaining
 class Cell:
-    '''
-    Class used for A star search to determine the cost of paths based on heuristic
+    '''Class used for A star search to determine the cost of paths based on heuristic\n
     Attributes:
-        parent_x (int): X coord of Cell's parent (from where is accessed)
         parent_y (int): Y coord of Cell's parent
+        parent_x (int): X coord of Cell's parent (from where is accessed)
         f (float): Total cost; f = g + h
         h (float): Cost from starting cell
         g (float): Heuristic (Manhattan / Euclidian / Diagonal) cost from current cell to dest
     '''
-    def __init__(self, x = 0, y = 0, f = float('inf'), h = float('inf'), g = 0):
-        self.parent_x = x
-        self.parent_y = y
+    def __init__(self, parent = None, f = float('inf'), h = float('inf'), g = 0, 
+                 direction = None, nr_bends: int = 0, nr_90_deg_bends: int = 0):
+        if parent:
+            self.parent = parent
+        else:
+            self.parent = (-1, -1)
         self.f = f  # Total cost (h + g)
         self.h = h  # Cost from start to cell
         self.g = g  # Heuristic (Manhattan / Euclidian / Diagonal) cost from current cell to dest
+        self.direction = direction
+        self.bends = nr_bends
+        self.bends_90_deg = nr_90_deg_bends
 
 
 
 # class used to define a path between two points that has width = n x 1;  
 class Path:
-    """
-    Class used to define a path between two points with a specified width.
+    """Class used to define a path between two points with a specified width.\n
     Attributes:
         start_x      (int): The x-coordinate of the starting point.
         start_y      (int): The y-coordinate of the starting point.
@@ -60,16 +76,15 @@ class Path:
         width        (int): The width of the path.
         other_nodes (list): Additional points related to the main path.
     """
-    def __init__(self, start_x: int, start_y: int, dest_x: int, dest_y: int, 
-                 path = None, width: int = 1, clearance: int = 1, other_nodes = None):
-        self.start_x = start_x
-        self.start_y = start_y
-        self.dest_x  = dest_x
-        self.dest_y  = dest_y
-        self.path    = path
-        self.width   = width
-        self.clearance = clearance
-        self.other_nodes =  other_nodes # stores points related to main path
+    def __init__(self, start: tuple[int, int], destination: tuple[int,  int],
+                 path = None, width: int = 1, clearance: int = 1, other_nodes = None, mutated: bool = False):
+        self.start          = start
+        self.destination    = destination
+        self.path           = path
+        self.width          = width
+        self.mutated        = mutated
+        self.clearance      = clearance
+        self.other_nodes    =  other_nodes # stores points related to main path
 
 
 
@@ -77,61 +92,48 @@ class Pad:
     '''
     Class used to define a pad for a part.
     Attributes:
-        center_x       (int): X coord of pad's center
-        center_y       (int): Y coord of pad's center
-        height         (int): pad's height
-        width          (int): pad's width  
-        angle          (int): pad's orientation (0, 90, 180, 270)
-        occupied_area (list): (X, Y) coord occupied by pad on board; useful for irregular shapes or circles
+        center_x       (int, int): (Y, X) coord of pad's center  
+        pad_area           (list): (Y, X) coord occupied by pad on board; useful for irregular shapes or circles
     '''
-    def __init__(self, center_x: int = 0, center_y: int = 0, original_center_x: int = 0, original_center_y: int = 0, 
-                 length: int = 0, width: int = 0, angle: int = 0, 
-                 occupied_area = None, pad_name: str = None, part_name: str = None):
-        self.center_x      = center_x
-        self.center_y      = center_y
-        self.org_center_x  = original_center_x  # inainte de transformari (in nm)
-        self.org_center_y  = original_center_y  
-        self.length        = length
-        self.width         = width
-        self.angle         = angle          # s-ar putea sa renunt la ea
-        self.occupied_area = occupied_area  # coord care realizeaza poligonul - lista de tupluri
-        self.pad_name      = pad_name       
-        self.part_name     = part_name      # s-ar putea sa renunt la ea
+    def __init__(self, center: tuple[int, int], original_center: tuple[int, int], 
+                 pad_area = None, drill_area = None, pad_name: str = None, netcode = None, netname = None):
+        self.center         = center
+        self.original_center= original_center  # inainte de transformari (in nm)
+        self.drill_area     = drill_area           # s-ar putea sa renunt la ea
+        self.pad_area       = pad_area   # coord care realizeaza poligonul - lista de tupluri
+        self.pad_name       = pad_name       # s-ar putea sa renunt la el
+        self.netcode        = netcode    # folosit pentru a determina carui net ii sunt asociate
+        self.netname        = netname    # posibil folosit pentru a crea folosi custom clearance si width
 
     def __str__(self) -> str:
-        return f'Pad Name: {self.pad_name}\nPart Name: {self.part_name}\nCenter: ({self.center_x}, {self.center_y})\nHeight: {self.length}\nWidth: {self.width}\nAngle: {self.angle}'
+        return f'Pad Name: {self.pad_name}\nCenter: ({self.center})'
 
 
 # check if cell / move is valid
-def is_unblocked(array, row: int, col: int, values: list):
-    # value used for different paths; 0 - blocked | 1 - unblocked | 2, 3, ... - paths 
-    return array[row][col] in values
-
+def is_unblocked(array, point: tuple[int, int], values: list):
+    row, column = point
+    return array[row][column] in values
 
 
 # check if cell is inside the grid
-def is_valid(row: int, col: int, rows: int, columns: int):
-    '''
-    Return True if row in [0, rows-1] and col in [0, columns-1]; else False
-    '''
-    return row >= 0 and row < rows and col >= 0 and col < columns
-
+def is_valid(point: tuple[int, int], array_shape: tuple[int, int]):
+    row, column = point
+    total_rows, total_columns = array_shape
+    return 0 <= row < total_rows and 0 <= column < total_columns
 
 
 # check if dest is reached
-def is_destination(row: int, col: int, dest_row: int, dest_col: int):
-    return row == dest_row and col == dest_col   
+def is_destination(current_point: tuple[int, int], destination_point: tuple[int, int]):
+    return current_point == destination_point
 
-
-
+# poate voi insera si partea de bends
 def route_length(route):        # route = [[,,,] - start,   ..., [,,,], ... ,      [,,,] - dest]
     distance = 0
     n = len(route)-1
     for index in range(n):
-        p1_row, p1_col = route[index]
-        p2_row, p2_col = route[index+1]
-        distance += h_euclidian(st_row = p1_row, st_col = p1_col, 
-                                dest_row = p2_row, dest_col = p2_col)
+        p1_row, p1_column = route[index]
+        p2_row, p2_column = route[index+1]
+        distance += h_euclidian((p1_row, p1_column), (p2_row, p2_column))
     return distance
 
 
@@ -143,7 +145,6 @@ def fitness_function(routes, unplaced_routes_number: int, unplaced_route_penalty
         total_length += l
 
     total_length = total_length * (unplaced_route_penalty ** unplaced_routes_number)
-    # add cost for number of vias used
     return total_length
 
 
@@ -152,50 +153,55 @@ def fitness_function(routes, unplaced_routes_number: int, unplaced_route_penalty
 # forms an angle  
 def simplify_path_list(paths_list):
     simplified_paths = []
-    
     for path in paths_list:
-        ms_points = []      # most significant points - start, stop, "bend" points
+        simplified_path = []      # most significant points - start, stop, "bend" points
         if path:
             length = len(path)
-            ms_points.append(path[0])
+            simplified_path = [path[0]]
             for i in range(1, length-1):
-                curr_point = path[i]
+                current_point = path[i]
                 prev_point = path[i - 1]
                 next_point = path[i + 1]
 
-                curr_x_direction = next_point[0] - curr_point[0]
-                curr_y_direction = next_point[1] - curr_point[1]
-                prev_x_direction = curr_point[0] - prev_point[0]
-                prev_y_direction = curr_point[1] - prev_point[1]
+                direction_current_y  = next_point[0] - current_point[0]
+                direction_current_x  = next_point[1] - current_point[1]
+                direction_previous_y = current_point[0] - prev_point[0]
+                direction_previous_x = current_point[1] - prev_point[1]
 
-                if curr_x_direction != prev_x_direction or curr_y_direction != prev_y_direction:
-                    ms_points.append(curr_point)
+                if direction_current_y != direction_previous_y or direction_current_x != direction_previous_x:
+                    simplified_path.append(current_point)
 
-            ms_points.append(path[length-1])
-            simplified_paths.append(ms_points)
-
+            simplified_path.append(path[-1])
+            simplified_paths.append(simplified_path)
     return simplified_paths
 
 
-# Returns tuple (dir_x_perp, dir_y_perp) so segment [(P.x, P.y), (P.x + dir_x, P.y + dir_y)] 
-# is perpendicular to [(P.x, P.y), (P.x + dir_perp_x, P.y + dir_perp_y)]
-def get_perpendicular_direction(dir_x: int, dir_y: int):
-    if dir_x == 0:  # orizontal
-        dir_x_perp = 1
-        dir_y_perp = 0
-    elif dir_y == 0:
-        dir_x_perp = 0
-        dir_y_perp = 1
-    elif abs(dir_x) == abs(dir_y):
-        dir_x_perp = -dir_y
-        dir_y_perp = dir_x
+# Returns tuple (dir_y_perp, dir_x_perp) so segment [(P.y, P.x), (P.y + dir_y, P.x + dir_x)] 
+# is perpendicular to [(P.y, P.x), (P.y + dir_perp_y, P.x + dir_perp_x)]
+def get_perpendicular_direction(direction_y: int, direction_x: int):
+    if direction_y == 0:  # orizontal
+        direction_perp_y = 1
+        direction_perp_x = 0
+    elif direction_x == 0:
+        direction_perp_y = 0
+        direction_perp_x = 1
+    elif abs(direction_y) == abs(direction_x):
+        direction_perp_y = -direction_x
+        direction_perp_x = direction_y
     else:   # abs(dir_x) != abs(dir_y) --- (-1,1), (1,-1)
-        dir_x_perp = dir_x
-        dir_y_perp = -dir_y
+        direction_perp_y = direction_y
+        direction_perp_x = -direction_x
 
-    return dir_x_perp, dir_y_perp
+    return direction_perp_y, direction_perp_x
 
 
+
+
+
+
+
+'''#===================================''' 
+# TODO
 # create a list of int from a string list if possible
 def string_list_to_int(string_list):
     int_list = None     # if int_list remains None, row will be avoided
@@ -204,8 +210,7 @@ def string_list_to_int(string_list):
             int_list = [int(s) for s in string_list]
     return int_list
 
-
-''''''
+# TODO
 # each line represents a connection between P1(x,y) and P2(x,y) + color as string
 def read_file_routes(file_name = 'pins.csv', draw = False):
     routes = []
@@ -231,49 +236,39 @@ def read_file_routes(file_name = 'pins.csv', draw = False):
     print(routes)
     # print(colors)
     return routes, colors
-''''''
+'''#===================================''' 
 
-
-''''''
-def read_file(filename: str):
-    pass
-''''''
 
 '''movement heuristics types'''
 # 4 directions
-def h_manhattan(st_row: int, st_col: int, dest_row: int, dest_col: int):
-    return abs(st_row - dest_row) + abs(st_col - dest_col)
-
+def h_manhattan(point1: tuple[int, int], point2: tuple[int, int]):
+    return abs(point1[1] - point2[1]) + abs(point1[0] - point2[0])
 
 # any direction
-def h_euclidian(st_row: int, st_col: int, dest_row: int, dest_col: int):
-    return sqrt((st_row - dest_row)**2 + (st_col - dest_col)**2)
-
-
-# 8 directions
-def h_diagonal(st_row: int, st_col: int, dest_row: int, dest_col: int):
-    dx = abs(st_row - dest_row)
-    dy = abs(st_col - dest_col)
-    D  = 1  # node length
-    D2 = 1.41421 #sqrt(2) - diagonal distance between nodes
-    return D * (dx + dy) + (D2 - 2*D) * min(dx, dy)
+def h_euclidian(point1: tuple[int, int], point2: tuple[int, int]):
+    return sqrt((point1[1] - point2[1])**2 + (point1[0] - point2[0])**2)
 ''''''
 
 
+
+'''#===================================''' 
+# TODO
 # return a rectangle area of cells
-def generate_rectangle(row: int, col: int, length_x: int, length_y):
-    area = [(i+row, j+col) for j in range(length_y) for i in range(length_x)]
+def generate_rectangle(row: int, col: int, length_y: int, length_x: int):
+    area = [(i+row, j+col) for j in range(length_x) for i in range(length_y)]
     return area
 
-
+# TODO
 # allocated are = [(x,y), (x,y)] == areas used so it won't use them
 def set_area_in_array(array, x_start: int, y_start: int, size_x: int, size_y: int, value: int, allocated_area: None):
     for row in range(size_x):
         for col in range(size_y):
             if (allocated_area and (x_start + row, y_start + col) not in allocated_area) or not allocated_area:
                 array[x_start + row][y_start + col] = value
+'''#===================================''' 
 
 
+# TODO
 ''' not urgent
 # in a group some routes should be ignored (avoid cycles)
 def ignore_routes():
@@ -289,15 +284,4 @@ def define_new_possible_routes():
 
 def copy_common_part(x1: Individual, x2: Individual):
     ...
-
-
-def mark_pins_in_grid(grid, st_row: int, st_col: int, 
-                      dest_row: int, dest_col: int,
-                      low_limit, pins_sizes = 1, value = -1, allocated_area = None): 
-    # value = 0 - blocked, 1 - unblocked
-    set_area_in_array(array = grid, x_start = st_row + low_limit, y_start = st_col + low_limit,
-                        size_x = pins_sizes, size_y = pins_sizes, value = value, allocated_area = allocated_area)
-    set_area_in_array(array = grid, x_start = dest_row + low_limit, y_start = dest_col + low_limit,
-                        size_x = pins_sizes, size_y = pins_sizes, value = value, allocated_area = allocated_area)    
-
 '''
