@@ -3,15 +3,8 @@ import heapq
 from collections import deque
 import copy
 import random
-from colored_repr_utils import draw_grid, get_RGB_matrix, color_pads_in_RGB_matrix, COLORS
-from utils import Cell, Path, Pad, is_destination, is_unblocked, is_valid, h_euclidian, \
-                  read_file_routes, set_area_in_array, check_element_in_list, \
-                  get_perpendicular_direction
-#from pcb_utils import PlannedRoute
-
-# Define size of grid
-ROWS = 55
-COLS = 55
+from utils import Cell, Path, is_destination, is_unblocked, is_valid, \
+                    h_euclidian, get_perpendicular_direction, check_90_deg_bend
 
 
 # equivalent to mark_apth_in)grid from pcb_utils
@@ -25,25 +18,17 @@ def set_values_in_array(blocked_cells, arr, value: 0):
     return arr_copy
 
 
-def get_offset_for_routing(current_poz: tuple[int, int], previous_poz: tuple[int, int]):
+def get_YX_directions(current_poz: tuple[int, int], previous_poz: tuple[int, int]):
     '''Returns distance for X and Y between 2 points reprezented as (int, int)'''
-    current_row, current_column = current_poz
-    previous_row, previous_column = previous_poz
     return current_poz[0] - previous_poz[0], current_poz[1] - previous_poz[1]
 
 
-
-def get_nodes(grid, point: tuple[int, int], width: int, direction_y: int, direction_x: int, values: int):
+def get_nodes(grid, grid_shape, point: tuple[int, int], width: int, direction_y: int, direction_x: int, values: int):
     '''
     Returns a list for cell neighbors according to width of the path
-    grid    (array):
-    row       (int):
-    column    (int):
-    width     (int):
-    dir_x     (int):
-    dir_y     (int):
     '''
     nodes = []
+    rows, columns = grid_shape
     row, column = point
     side = (width - 1) // 2
     for i in range(1, side + 1):
@@ -84,7 +69,7 @@ def get_nodes(grid, point: tuple[int, int], width: int, direction_y: int, direct
     return nodes
 
 
-def get_adjent_path(grid, path, width: int, values):
+def get_adjent_path(grid, grid_shape, path, width: int, values):
     '''
     Returns an array containg other nodes adjent to main path, according to path's width
     Parameters:
@@ -98,23 +83,14 @@ def get_adjent_path(grid, path, width: int, values):
     for i in range(1, len(path) - 1):
         previous_row, previous_column = path[i - 1]
         current_row, current_column = path[i]
-        direction_y, direction_x = get_offset_for_routing(current_poz = (current_row, current_column), 
+        direction_y, direction_x = get_YX_directions(current_poz = (current_row, current_column), 
                                                             previous_poz = (previous_row, previous_column))
         direction_perp_y, direction_perp_x = get_perpendicular_direction(direction_y, direction_x) # direction perpendicular to x and y
-        neighbors = get_nodes(grid = grid, point = (current_row, current_column), width = width,
+        neighbors = get_nodes(grid = grid, grid_shape = grid_shape, point = (current_row, current_column), width = width,
                                direction_y = direction_perp_y, direction_x = direction_perp_x, values = values)
         other_nodes.append(neighbors)
     
     return other_nodes
-
-
-# TODO
-def assign_values_to_pads(grid, routes, pads):
-    '''
-    For compatibily of complex paths (paths made from 2 routes between 3 pads)
-    '''
-    values = []
-    return values
 
 
 def print_path(path, path_index = 0):
@@ -316,10 +292,9 @@ def check_width_and_clearance(array, array_shape: tuple[int, int], point: tuple[
 
 
 
-
-# find one route at a time using A star algorihm (modified Dijkstra)
-def a_star_search(grid, grid_size: tuple[int, int], start: tuple[int, int], destination: tuple[int, int], path_value: int,
-                  clearance: int = 1, width: int = 1, hide_prints = True):
+# A star algorihm (modified Dijkstra)
+def a_star_search(grid, grid_size: tuple[int, int], start: tuple[int, int], destination: tuple[int, int], 
+                  path_value: int, clearance: int = 1, width: int = 1, hide_prints = True):
     rows, columns = grid_size
     start_row, start_col = start
     destination_row, destiantion_col = destination
@@ -330,13 +305,13 @@ def a_star_search(grid, grid_size: tuple[int, int], start: tuple[int, int], dest
         return False
     
     if not is_unblocked(grid, (start_row, start_col), values = [0, path_value]) or not \
-        is_unblocked(grid, (destination_row, destiantion_col), values = [0, path_value]):
+        is_unblocked(grid, (destination_row, destiantion_col), values = [0, path_value]):   # de testat 0 sau 0, netcode, netcode + 0.5, netcode + 0.7
         if hide_prints == False:
             print("\nStart | Dest blocked")
         return False
 
     # Return the path from source to destination
-    def get_path_A_star():
+    def get_path():
         path = []
         row, column = destination
     
@@ -367,7 +342,7 @@ def a_star_search(grid, grid_size: tuple[int, int], start: tuple[int, int], dest
     while len(open_list) > 0:
         point = heapq.heappop(open_list)
         i, j = point[1], point[2]
-        print("Progress:", i, j, ":", start_row, start_col, ":", destination_row, destiantion_col)
+        #print("Progress:", i, j, ":", start_row, start_col, ":", destination_row, destiantion_col)
 
         for dir in directions:  # for each direction check the succesor
             dir_y, dir_x = dir
@@ -378,7 +353,6 @@ def a_star_search(grid, grid_size: tuple[int, int], start: tuple[int, int], dest
                 is_unblocked(grid, (new_i, new_j), [0, path_value, path_value + 0.5]) and \
                   cell_details[new_i][new_j].parent == (-1, -1):
 
-
                 if check_width_and_clearance(grid, (rows, columns), (i, j), dir_y, dir_x, [0, path_value, path_value + 0.5], width, clearance) \
                     and not is_destination((new_i, new_j), (destination_row, destiantion_col)):
                     parent_cell = cell_details[i][j]
@@ -388,14 +362,13 @@ def a_star_search(grid, grid_size: tuple[int, int], start: tuple[int, int], dest
                     if parent_direction and parent_direction != dir:
                         nr_bends += 1
                         aux_y, aux_x = parent_cell.parent
-                        if (aux_y, aux_x) != (-1, -1):
-                            aux_direction = cell_details[aux_y][aux_x].direction
-                            if aux_direction and parent_direction != aux_direction:
-                                nr_90_degree_bends += 1                                    
+                        aux_direction = cell_details[aux_y][aux_x].direction
+                        if aux_direction and check_90_deg_bend(aux_direction, parent_direction):
+                            nr_90_degree_bends += 1                                    
 
                     g_new = parent_cell.g + h_euclidian((i, j), (new_i, new_j))   # greedy aprouch
-                    h_new = h_euclidian((new_i, new_j), (destination_row, destiantion_col)) * 10
-                    f_new = g_new + h_new + (nr_bends << 2) + (nr_90_degree_bends << 4)
+                    h_new = h_euclidian((new_i, new_j), (destination_row, destiantion_col)) * 7
+                    f_new = g_new + h_new + (nr_90_degree_bends << 15) + (nr_bends << 10)
 
                     if cell_details[new_i][new_j].f == float('inf') or cell_details[new_i][new_j].f > f_new:
                         heapq.heappush(open_list, (f_new, new_i, new_j))
@@ -412,7 +385,7 @@ def a_star_search(grid, grid_size: tuple[int, int], start: tuple[int, int], dest
                     if hide_prints == False:
                         print("\n\nDestination cell reached")
 
-                    path = get_path_A_star()
+                    path = get_path()
                     return path
 
     if hide_prints == False:
@@ -424,16 +397,6 @@ def a_star_search(grid, grid_size: tuple[int, int], start: tuple[int, int], dest
 # routing with lee
 def lee_search(grid, grid_size: tuple, start: tuple[int, int], possible_ends: list,
                width: int, clearance: int, value: int, hide_prints: bool = True):
-    '''
-    grid    (array):
-    grid_size ((int, int)):
-    st_row  (int):
-    st_col  (int):
-    dest    (list((int, int)):
-    closed_array (array):
-    values  (list(int)):
-    hide_prints (bool):
-    '''
     rows, columns = grid_size
     start_row, start_column = start
 
@@ -451,18 +414,6 @@ def lee_search(grid, grid_size: tuple, start: tuple[int, int], possible_ends: li
             print("\nStart blocked")
         return False
     
-    # for dest in possible_ends:
-    #     row, column = dest
-    #     if not is_valid((row, column), (rows, columns)):
-    #         if hide_prints == False:
-    #             print("\nAt least one destination is invalid")
-    #         return False
-
-    #     if not is_unblocked(grid_copy, (row, column), values):
-    #         if hide_prints == False:
-    #             print("\nAt least one destination is blocked")
-    #         return False         
-
     directions = [(0, 1), (0, -1), (1, 0), (-1, 0), (1, 1), (1, -1), (-1, 1), (-1, -1)]
     
     mark_path_in_array = np.full(shape = (rows, columns), fill_value = -1, dtype=float)
@@ -507,12 +458,10 @@ def lee_search(grid, grid_size: tuple, start: tuple[int, int], possible_ends: li
 
     end_reached = False
     q = deque() # Create a queue for BFS
-    
+    visited = set()
+
     # Add start to BFS q
     i, j = start_row, start_column
-    # visited = np.full((rows, columns), fill_value=False)
-    # visited[i][j] = True
-    visited = set()
     visited.add((i, j))
     s = (i, j, 0.0) 
     q.append(s) 
@@ -530,10 +479,10 @@ def lee_search(grid, grid_size: tuple, start: tuple[int, int], possible_ends: li
                         end_reached = True
                         if not hide_prints:
                             print(f"\n\nDestination (pad) ({i}, {j}) reached")
-            elif grid[i][j] == value:
-                end_reached = True
-                if not hide_prints:
-                    print(f"\n\nDestination (route) ({i}, {j}) reached")
+            # elif grid[i][j] == value:
+            #     end_reached = True
+            #     if not hide_prints:
+            #         print(f"\n\nDestination (route) ({i}, {j}) reached")
 
             if end_reached:
                 dest_y, dest_x = i, j
@@ -547,7 +496,7 @@ def lee_search(grid, grid_size: tuple, start: tuple[int, int], possible_ends: li
             new_j = j + dir_x
 
             if is_valid((new_i, new_j), (rows, columns)) and is_unblocked(grid, (new_i, new_j), values) and \
-                 (new_i, new_j) not in visited:#visited[new_i][new_j] == False:
+                 (new_i, new_j) not in visited: #visited[new_i][new_j] == False:
 
                 if check_width_and_clearance(array = grid, array_shape = (rows, columns), 
                                              path_values = values, point = (i, j), direction_y = dir_y, 
@@ -639,35 +588,30 @@ class UnionFind:
                 self.rank[root_u] += 1
 
 
-
-# TODO +++++++++++++++++++++++++++++++++++++++++++++ TODO
 '''
-# add option for appending to existing path
+Add option for appending to existing path --- TODO
 '''
 
-def get_paths(template_grid, grid_shape = tuple[int, int], routes: list = None, pads: list = None, 
-              draw_flag = False, hide_prints = True, color_matrix = None):
-    '''
-    Returns grid used during process and paths found as a list(Path)
-    Parameters:
-    grid                     (array(int)):
-    routes                         (list):
-    pads                      (list(Pad)):
-    width_list                (list(int)):
-    hide_prints_flag               (bool):
-    '''
+def get_paths(template_grid, grid_shape: tuple[int, int], planned_routes: dict, routing_order: list, 
+              pads: list = None, hide_prints = True):
     rows, columns = grid_shape
     paths = []
     route_index = 0
     grid = copy.deepcopy(template_grid)
   
     # Initialize Union-Find structure for all points in all routes
-    all_points = list(set(point for route in routes for point in route.coord_list))
+    # all_points = list(set(point for route in routes for point in route.coord_list))
+    # # de adaugat eliminarea componentelor / rutelor daca exista drum de la x la y
+    # point_to_index = {point: idx for idx, point in enumerate(all_points)}
+    # uf = UnionFind(len(all_points))
+
+    all_points = list(set(point for netcode in routing_order for point in planned_routes[netcode].coord_list))
     point_to_index = {point: idx for idx, point in enumerate(all_points)}
     uf = UnionFind(len(all_points))
 
-    for route in routes:
-        netcode = route.netcode
+    for netcode in routing_order:
+        route = planned_routes[netcode]
+        # netcode = route.netcode
         netname = route.netname
         width   = route.width
         clearance = route.clearance
@@ -700,10 +644,10 @@ def get_paths(template_grid, grid_shape = tuple[int, int], routes: list = None, 
                 uf.union(start_point_idx, dest_point_idx)
 
         if path:
-            adjent_path = get_adjent_path(grid = grid_copy, path = path, 
+            adjent_path = get_adjent_path(grid = grid_copy, grid_shape = (rows, columns), path = path, 
                                           width = width, values = [netcode, netcode + 0.5, netcode + 0.7])
             
-            path_found = Path(start_point, dest_point, path, width, clearance, adjent_path)
+            path_found = Path(start_point, dest_point, netcode, path, width, clearance, adjent_path)
             paths.append(path_found)
 
             if hide_prints == False:
@@ -720,193 +664,6 @@ def get_paths(template_grid, grid_shape = tuple[int, int], routes: list = None, 
             grid = mark_clearance_on_grid(grid, (rows, columns), path, width, clearance, netcode + 0.7)
         else:
             print("Unplaced route")
-            paths.append(Path(start_point, dest_point, [], width, clearance, []))
+            paths.append(Path(start_point, dest_point, netcode, [], width, clearance, []))
 
     return paths
-
-
-
-# check if initial representation is needed and start placing routes
-def solution(grid, routes, pads, clearance_list: list = None, width_list: list = None,
-              rows = ROWS, columns = COLS, blocked_areas = None, colors = None, draw = False):
-    if draw == True:
-        color_matrix = get_RGB_matrix(nodes = routes, colors_list = colors, background = COLORS['black'], rows = rows, columns = columns)
-
-        color_matrix = color_pads_in_RGB_matrix(pads = pads, rows = rows, columns = columns, grid = color_matrix, background = COLORS['black'])
-        draw_grid(color_matrix = color_matrix, main_path=None)
-
-    clearance_list = [2 for i in range(len(routes))]
-    widths = [3 for i in range(len(routes))]
-    paths = get_paths(template_grid = grid, grid_shape = (len(grid), len(grid[0])), routes = routes, width_list=widths,
-                        pads = pads, clearance_list = clearance_list,
-                        color_matrix = color_matrix, draw_flag = draw, 
-                        hide_prints = False)
-    
-
-
-# for testing purposes
-if __name__ == "__main__":
-    rows = ROWS
-    columns = COLS
-    pins_sizes = 3
-    pads = []
-
-    blocked = None
-
-    routes, colors = read_file_routes(file_name='pins.csv', draw = True)
-
-    # for testing Pad class
-    for route in routes:
-        if len(pads) != 0:
-            pin = Pad(center = (route[0], route[1]), original_center = (route[0], route[1]), pad_area = [(route[0], route[1])])
-            if pin not in pads:
-                pads.append(pin)
-            pin = Pad(center = (route[2], route[3]), original_center = (route[2], route[3]), pad_area = [(route[2], route[3])])
-            if pin not in pads:
-                pads.append(pin)
-        else:
-            height = 3
-            width = 3
-            occupied_area = []
-            pad = Pad(center = (route[0], route[1]), original_center = (route[0], route[1]), pad_area = [(route[0], route[1])])
-            for h in range(height):
-                for w in range(width):
-                    y, x = pad.center
-                    x = x - height // 2 + h 
-                    y = y - width // 2 + w
-                    occupied_area.append((y, x))
-            pad.pad_area = occupied_area
-            pads.append(pad)
-
-            occupied_area = []
-            pad = Pad(center = (route[2], route[3]), original_center = (route[2], route[3]), pad_area = [(route[2], route[3])])
-            for h in range(height):
-                for w in range(width):
-                    y, x = pad.center
-                    y = y - height // 2 + h
-                    x = x - width // 2 + w
-                    occupied_area.append((y, x))
-            pad.pad_area = occupied_area
-            pads.append(pad)
-
-
-    grid = np.zeros((rows, columns), dtype=float)
-    n = len(routes)
-    widths = [1 for i in range(n)]
-    widths[0] = 3
-    widths[3] = 2
-    widths[2] = 3
-
-    # mark with red cells that can be used (obstacles)
-    grid = set_values_in_array(blocked_cells = blocked, arr = grid, value = -1)
-    for area in pads:
-        print(area.pad_area)
-    print('\n')
-    solution(grid = grid, routes = routes, pads = pads, width_list = widths,
-             colors = colors, blocked_areas = blocked, draw = True)
-
-
-
-
-
-
-
-# def get_paths(template_grid, grid_shape = tuple[int, int], routes: list = None, pads: list = None, 
-#               existing_paths = None, width_list: list = None, 
-#               clearance_list: int = 2, draw_flag = False, hide_prints = True, color_matrix = None):
-#     '''
-#     Returns grid used during process and paths found as a list(Path)
-#     Parameters:
-#     grid                     (array(int)):
-#     routes                         (list):
-#     pads                      (list(Pad)):
-#     existing_paths    (list(Path) | None):
-#     width_list                (list(int)):
-#     color_matrix           (array | None):
-#     clearance_list            (list(int)):
-#     draw_flag                      (bool):
-#     hide_prints_flag               (bool):
-#     '''
-#     rows, columns = grid_shape
-    
-#     n = len(routes)
-    
-#     placed_points = []
-#     if existing_paths:
-#         paths = copy.deepcopy(existing_paths)
-#         for path in existing_paths:
-#             placed_points.append([path[0], path[len(path) - 1]])
-#     else:
-#         paths = []
-
-#     route_index = 0
-#     grid = copy.deepcopy(template_grid)
-
-#     for pad in pads:  # nu voi mai avea nevoie de ea deoarece ma voi folosi de matricea template
-#         area = pad.pad_area
-#         for coord in area:
-#             y, x = coord
-#             grid[y][x] = -1
-
-#     for route in routes:
-#         route_index += 1
-#         st_row, st_col, dest_row, dest_col = route[0:4]
-
-#         # 0 = unblock; -1  = blocked; 1,2,... = used
-#         grid_copy = copy.copy(grid)
-
-#         for pad in pads:
-#             y, x = pad.center
-#             if (st_row, st_col) == (y, x) or (dest_row, dest_col) == (y, x):
-#                 area = pad.pad_area
-#                 for coord in area:
-#                     y, x = coord
-#                     grid_copy[y][x] = 0         
-        
-#         if not choose_a_star():
-#             path = lee_search(grid = grid_copy, grid_size = (rows, columns), route_values = [route_index, route_index + 0.5, route_index + 0.7], 
-#                                 start = (st_row, st_col), possible_ends = [(dest_row, dest_col)],
-#                                 width = width_list[route_index-1], clearance = clearance_list[route_index-1], hide_prints = False)
-                
-#         else:
-#             path = a_star_search(grid = grid_copy, grid_size = (rows, columns), path_value = route_index,
-#                                     start = (st_row, st_col), destination = (dest_row, dest_col),
-#                                     width = width_list[route_index-1], clearance = clearance_list[route_index-1],
-#                                     hide_prints = hide_prints)
-          
-#         if path:
-#             adjent_path = get_adjent_path(grid = grid_copy, path = path, 
-#                                           width = width_list[route_index-1], values = [0, route_index])
-
-#             path_found = Path(start = (st_row, st_col), destination = (dest_row, dest_col), 
-#                               width = width_list[route_index-1], clearance = clearance_list[route_index-1],
-#                               path = path, other_nodes = adjent_path)
-
-#             if hide_prints == False:
-#                 print_path(path = path_found.path, path_index = route_index)
-            
-#             paths.append(path_found)
-
-#             set_values_in_array(path, grid, route_index)
-
-#             extended_path = []
-#             if adjent_path:
-#                 for subpath in adjent_path:
-#                     extended_path.extend(subpath)
-#                     set_values_in_array(subpath, grid, route_index + 0.5)
-
-#             grid = mark_clearance_on_grid(grid, (rows, columns), path, width_list[route_index-1], 
-#                                           clearance_list[route_index-1], route_index + 0.7)
-
-#             if draw_flag == True:    
-#                 draw_grid(color_matrix = color_matrix, main_path = path,
-#                             color_main_path = random.choice([COLORS['yellow'], COLORS['red'], COLORS['pink'], COLORS['orange']]),
-#                             other_nodes = extended_path, color_other_nodes = random.choice([COLORS['yellow'], COLORS['red'], COLORS['pink'], COLORS['orange']])) 
-            
-#         else:
-#             if hide_prints == False:
-#                 print("\tNo change in drawing. Route can't be placed\n")
-#             paths.append(Path(start = (st_row, st_col), destination = (dest_row, dest_col), 
-#                               width = width_list[route_index-1], clearance=clearance_list[route_index-1],
-#                               path = [], other_nodes = []))
-#     return paths

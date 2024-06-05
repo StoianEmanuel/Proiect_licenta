@@ -8,3 +8,6 @@ pcbnew_import_try.py
 testing_pads_coords.py
 notes.txt
 checklist.txt
+*test*.py
+*.txt
+pcbnew_utils2.py

@@ -3,12 +3,13 @@ from tkinter import ttk
 from tkinter import filedialog as fd
 import threading
 from genetic_routing import run_genetic_algorithm
-from utils import delete_file
+
 
 # Initialize global variables
-selected_file = None
+filename = None
 output_file = None
 processing_thread = None
+process_callback = None
 event = threading.Event()
 
 
@@ -25,9 +26,10 @@ def update_progress(progress_tuple):
 # Function performed on a thread
 def task(event, params):
     try:
-        global output_file, selected_file
-        run_genetic_algorithm(save_file=output_file, read_file=selected_file, event=event, process_callback = None, **params)
-        # ------- de adaugat **kwargs pentru run_genetic_algorithm
+        global filename, process_callback
+        run_genetic_algorithm(filename = filename, event=event, process_callback = process_callback, **params)      
+    
+        #run_genetic_algorithm(save_file=output_file, read_file=selected_file, event=event, process_callback = None, **params)
         processing_label.config(text="Processing complete!", justify='center')
         stop_button.grid_remove()
         progress_bar.grid_remove()
@@ -58,12 +60,11 @@ def wait_for_thread_completion():
 # Updates the interface after the processing thread has stopped
 def update_interface(text="Thread stopped"):
     processing_label.config(text=text)
-    delete_file(output_file)
 
 
 # Function to open the file dialog
 def open_text_file():
-    filetypes = (("DSN files", "*.dsn"), ("Text files", "*.txt"), ("All files", "*.*"))
+    filetypes = (("KiCad PCB files", "*.kicad_pcb"), ("All files", "*.*"))
     text.delete('1.0', 'end')
     processing_label.config(text="")
     
@@ -71,18 +72,17 @@ def open_text_file():
     processing_thread = None
     event.clear()
     try:
-        global selected_file, output_file
+        global filename, output_file, process_callback # voi renunta la file name # TODO
         f = fd.askopenfile(filetypes=filetypes)
         text.insert('1.0', f.read())
-        selected_file = f.name
-        print(selected_file)
+        filename = f.name
         f.close()
 
-        dot_index = selected_file.rfind(".")
+        dot_index = filename.rfind(".")
         if dot_index != -1:
-            output_file = selected_file[:dot_index] + ".ses"
+            output_file = filename[:dot_index] + ".ses"
         else:
-            output_file = selected_file + ".ses"
+            output_file = filename + ".ses"
 
         params = {
             "all": var1.get(),
@@ -103,6 +103,7 @@ def open_text_file():
         stop_button.grid(column=0, row=2, pady=10)
         processing_label.config(text="Processing...", justify='center')
         progress_bar.grid(row=9, column=0, columnspan=4, pady=20)  # Show the progress bar
+        update_progress(process_callback)
     
     except Exception as e:
         processing_label.config(text=f"Error: {str(e)}", justify='center')
@@ -110,7 +111,7 @@ def open_text_file():
 
 # Validation for entries
 def validate_positive_integer(P):
-    if P.isdigit() and int(P) > 0:
+    if P.isdigit() and int(P) >= 50000:
         return True
     return False
 
@@ -118,8 +119,8 @@ def validate_positive_integer(P):
 # Create a GUI app
 app = tk.Tk()
 app.title('Routing with Genetic Algorithm')
-app.geometry('800x700')
-app.minsize(width=800, height=700)
+app.geometry('900x450')
+app.minsize(width=900, height=450)
 
 
 # Define widgets
@@ -129,19 +130,19 @@ open_button = ttk.Button(app, text='Choose file', command=lambda: open_text_file
 stop_button = ttk.Button(app, text='Stop processing', command=lambda: force_thread_stop() if processing_thread is not None else None)
 stop_button.grid_remove()  # Hide stop button initially
 keep_var = tk.BooleanVar()
-keep_checkbox = tk.Checkbutton(app, text="Keep", variable=keep_var)
+keep_ck = tk.Checkbutton(app, text="Keep", variable=keep_var)
 
 
 # Layout widgets
 open_button.grid(column=0, row=0, padx=20, pady=10)
-keep_checkbox.grid(column=0, row=1, padx=20, pady=10)
+keep_ck.grid(column=0, row=1, padx=20, pady=10)
 text.grid(column=1, row=0, rowspan=9, padx=20, pady=10)
 processing_label.grid(column=1, row=9, pady=10)
 
 
 # Right column (Checkboxes and entries)
 var1 = tk.BooleanVar()
-tk.Checkbutton(app, text="All", variable=var1).grid(row=0, column=2, padx=20)
+all_ck = tk.Checkbutton(app, text="All", variable=var1).grid(row=0, column=2, padx=20)
 tk.Label(app, text='Width').grid(row=1, column=2, padx=20)
 tk.Label(app, text='Clearance').grid(row=2, column=2, padx=20, pady=(0,20))
 e1 = tk.Entry(app)
@@ -150,7 +151,7 @@ e1.grid(row=1, column=3)
 e2.grid(row=2, column=3, pady=(0,20))
 
 var2 = tk.BooleanVar()
-tk.Checkbutton(app, text="Power", variable=var2).grid(row=3, column=2, padx=20)
+power_ck = tk.Checkbutton(app, text="Power", variable=var2).grid(row=3, column=2, padx=20)
 tk.Label(app, text='Width').grid(row=4, column=2, padx=20)
 tk.Label(app, text='Clearance').grid(row=5, column=2, padx=20, pady=(0,20))
 e3 = tk.Entry(app)
@@ -159,7 +160,7 @@ e3.grid(row=4, column=3)
 e4.grid(row=5, column=3, pady=(0,20))
 
 var3 = tk.BooleanVar()
-tk.Checkbutton(app, text="Ground", variable=var3).grid(row=6, column=2, padx=20, pady=10)
+ground_ck = tk.Checkbutton(app, text="Ground", variable=var3).grid(row=6, column=2, padx=20, pady=10)
 tk.Label(app, text='Width').grid(row=7, column=2, padx=20)
 tk.Label(app, text='Clearance').grid(row=8, column=2, padx=20, pady=(0,20))
 e5 = tk.Entry(app)
@@ -176,13 +177,33 @@ progress_bar.grid_remove()  # Hide progress bar initially
 
 
 # Update entries based on checkboxes
+# Update entries based on checkboxes
 def update_entries():
-    e1.config(state='normal' if var1.get() else 'disabled')
-    e2.config(state='normal' if var1.get() else 'disabled')
-    e3.config(state='normal' if var2.get() else 'disabled')
-    e4.config(state='normal' if var2.get() else 'disabled')
-    e5.config(state='normal' if var3.get() else 'disabled')
-    e6.config(state='normal' if var3.get() else 'disabled')
+    if processing_thread is None:
+        e1.config(state='normal' if var1.get() else 'disabled')
+        e2.config(state='normal' if var1.get() else 'disabled')
+        e3.config(state='normal' if var2.get() else 'disabled')
+        e4.config(state='normal' if var2.get() else 'disabled')
+        e5.config(state='normal' if var3.get() else 'disabled')
+        e6.config(state='normal' if var3.get() else 'disabled')
+    else:
+        # Dacă procesul este în curs, toate checkbox-urile sunt dezactivate
+        e1.config(state='disabled')
+        e2.config(state='disabled')
+        e3.config(state='disabled')
+        e4.config(state='disabled')
+        e5.config(state='disabled')
+        e6.config(state='disabled')
+        keep_var.set(False)
+        keep_ck.config(state='disabled')
+        var1.set(False)  # Debifează checkbox-ul
+        all_ck.config(state='disabled')  # Dezactivează checkbox-ul "Ground"
+        var2.set(False)  # Debifează checkbox-ul
+        power_ck.config(state='disabled')  # Dezactivează checkbox-ul "Ground"
+        var3.set(False)  # Debifează checkbox-ul
+        ground_ck.config(state='disabled')  # Dezactivează checkbox-ul "Ground"
+
+
 
 var1.trace_add("write", lambda *args: update_entries())
 var2.trace_add("write", lambda *args: update_entries())
