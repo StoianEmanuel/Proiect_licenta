@@ -1,9 +1,9 @@
+#! C:\Users\manue\Desktop\GA\Proiect\venv\Scripts\python.exe
 import tkinter as tk
 from tkinter import ttk
 from tkinter import filedialog as fd
 import threading
 from genetic_routing import run_genetic_algorithm
-
 
 # Initialize global variables
 filename = None
@@ -13,26 +13,14 @@ process_callback = None
 event = threading.Event()
 
 
-# Define a callback function to update the progress bar
-def update_progress(progress_tuple):
-    if progress_tuple:
-        max_dimension, current_iteration = progress_tuple
-        progress_value = (current_iteration / max_dimension) * 100
-        progress_var.set(progress_value)
-    else:
-        progress_var.set(0)
-
-
 # Function performed on a thread
 def task(event, params):
     try:
         global filename, process_callback
-        run_genetic_algorithm(filename = filename, event=event, process_callback = process_callback, **params)      
-    
-        #run_genetic_algorithm(save_file=output_file, read_file=selected_file, event=event, process_callback = None, **params)
+        run_genetic_algorithm(filename=filename, event=event, **params)
+
         processing_label.config(text="Processing complete!", justify='center')
         stop_button.grid_remove()
-        progress_bar.grid_remove()
     finally:
         event.clear()
 
@@ -63,16 +51,16 @@ def update_interface(text="Thread stopped"):
 
 
 # Function to open the file dialog
-def open_text_file():
+def choose_file():
     filetypes = (("KiCad PCB files", "*.kicad_pcb"), ("All files", "*.*"))
     text.delete('1.0', 'end')
     processing_label.config(text="")
-    
+
     global processing_thread, event
     processing_thread = None
     event.clear()
     try:
-        global filename, output_file, process_callback # voi renunta la file name # TODO
+        global filename, output_file, process_callback
         f = fd.askopenfile(filetypes=filetypes)
         text.insert('1.0', f.read())
         filename = f.name
@@ -94,7 +82,8 @@ def open_text_file():
             "clearance_power": int(e4.get()) if e4.get().isdigit() else None,
             "width_ground": int(e5.get()) if e5.get().isdigit() else None,
             "clearance_ground": int(e6.get()) if e6.get().isdigit() else None,
-            "keep_values": keep_var.get()
+            "keep_values": keep_var.get(),
+            "layer": 1 if layer_var.get() == "BOTTOM" else 2
         }
 
         event = threading.Event()
@@ -102,18 +91,14 @@ def open_text_file():
         processing_thread.start()
         stop_button.grid(column=0, row=2, pady=10)
         processing_label.config(text="Processing...", justify='center')
-        progress_bar.grid(row=9, column=0, columnspan=4, pady=20)  # Show the progress bar
-        update_progress(process_callback)
-    
+
     except Exception as e:
         processing_label.config(text=f"Error: {str(e)}", justify='center')
 
 
 # Validation for entries
 def validate_positive_integer(P):
-    if P.isdigit() and int(P) >= 50000:
-        return True
-    return False
+    return P == "" or (P.isdigit() and int(P) > 0)
 
 
 # Create a GUI app
@@ -126,57 +111,51 @@ app.minsize(width=900, height=450)
 # Define widgets
 text = tk.Text(app, height=20, width=60)
 processing_label = tk.Label(app, text="", font=("Arial", 12))
-open_button = ttk.Button(app, text='Choose file', command=lambda: open_text_file() if processing_thread is None else None)
+open_button = ttk.Button(app, text='Choose file', command=lambda: choose_file() if processing_thread is None else None)
 stop_button = ttk.Button(app, text='Stop processing', command=lambda: force_thread_stop() if processing_thread is not None else None)
 stop_button.grid_remove()  # Hide stop button initially
 keep_var = tk.BooleanVar()
 keep_ck = tk.Checkbutton(app, text="Keep", variable=keep_var)
-
+layer_var = tk.StringVar(value="BOTTOM")
+layer_dropdown = ttk.OptionMenu(app, layer_var, "BOTTOM", "BOTTOM", "TOP/BOTTOM")
 
 # Layout widgets
 open_button.grid(column=0, row=0, padx=20, pady=10)
 keep_ck.grid(column=0, row=1, padx=20, pady=10)
+layer_dropdown.grid(column=0, row=3, padx=20, pady=10)
 text.grid(column=1, row=0, rowspan=9, padx=20, pady=10)
 processing_label.grid(column=1, row=9, pady=10)
 
 
 # Right column (Checkboxes and entries)
 var1 = tk.BooleanVar()
-all_ck = tk.Checkbutton(app, text="All", variable=var1).grid(row=0, column=2, padx=20)
+all_ck = tk.Checkbutton(app, text="All", variable=var1, command=lambda: update_entries()).grid(row=0, column=2, padx=20)
 tk.Label(app, text='Width').grid(row=1, column=2, padx=20)
-tk.Label(app, text='Clearance').grid(row=2, column=2, padx=20, pady=(0,20))
+tk.Label(app, text='Clearance').grid(row=2, column=2, padx=20, pady=(0, 20))
 e1 = tk.Entry(app)
 e2 = tk.Entry(app)
 e1.grid(row=1, column=3)
-e2.grid(row=2, column=3, pady=(0,20))
+e2.grid(row=2, column=3, pady=(0, 20))
 
 var2 = tk.BooleanVar()
-power_ck = tk.Checkbutton(app, text="Power", variable=var2).grid(row=3, column=2, padx=20)
+power_ck = tk.Checkbutton(app, text="Power", variable=var2, command=lambda: update_entries()).grid(row=3, column=2, padx=20)
 tk.Label(app, text='Width').grid(row=4, column=2, padx=20)
-tk.Label(app, text='Clearance').grid(row=5, column=2, padx=20, pady=(0,20))
+tk.Label(app, text='Clearance').grid(row=5, column=2, padx=20, pady=(0, 20))
 e3 = tk.Entry(app)
 e4 = tk.Entry(app)
 e3.grid(row=4, column=3)
-e4.grid(row=5, column=3, pady=(0,20))
+e4.grid(row=5, column=3, pady=(0, 20))
 
 var3 = tk.BooleanVar()
-ground_ck = tk.Checkbutton(app, text="Ground", variable=var3).grid(row=6, column=2, padx=20, pady=10)
+ground_ck = tk.Checkbutton(app, text="Ground", variable=var3, command=lambda: update_entries()).grid(row=6, column=2, padx=20, pady=10)
 tk.Label(app, text='Width').grid(row=7, column=2, padx=20)
-tk.Label(app, text='Clearance').grid(row=8, column=2, padx=20, pady=(0,20))
+tk.Label(app, text='Clearance').grid(row=8, column=2, padx=20, pady=(0, 20))
 e5 = tk.Entry(app)
 e6 = tk.Entry(app)
 e5.grid(row=7, column=3)
-e6.grid(row=8, column=3, pady=(0,20))
+e6.grid(row=8, column=3, pady=(0, 20))
 
 
-# Progress bar
-progress_var = tk.DoubleVar()
-progress_bar = ttk.Progressbar(app, orient="horizontal", length=300, mode="determinate", variable=progress_var)
-progress_bar.grid(row=9, column=0, columnspan=4, pady=20)
-progress_bar.grid_remove()  # Hide progress bar initially
-
-
-# Update entries based on checkboxes
 # Update entries based on checkboxes
 def update_entries():
     if processing_thread is None:
@@ -187,22 +166,17 @@ def update_entries():
         e5.config(state='normal' if var3.get() else 'disabled')
         e6.config(state='normal' if var3.get() else 'disabled')
     else:
-        # Dacă procesul este în curs, toate checkbox-urile sunt dezactivate
+        # If processing is in progress, disable all entries and checkboxes
         e1.config(state='disabled')
         e2.config(state='disabled')
         e3.config(state='disabled')
         e4.config(state='disabled')
         e5.config(state='disabled')
         e6.config(state='disabled')
-        keep_var.set(False)
         keep_ck.config(state='disabled')
-        var1.set(False)  # Debifează checkbox-ul
-        all_ck.config(state='disabled')  # Dezactivează checkbox-ul "Ground"
-        var2.set(False)  # Debifează checkbox-ul
-        power_ck.config(state='disabled')  # Dezactivează checkbox-ul "Ground"
-        var3.set(False)  # Debifează checkbox-ul
-        ground_ck.config(state='disabled')  # Dezactivează checkbox-ul "Ground"
-
+        all_ck.config(state='disabled')
+        power_ck.config(state='disabled')
+        ground_ck.config(state='disabled')
 
 
 var1.trace_add("write", lambda *args: update_entries())
