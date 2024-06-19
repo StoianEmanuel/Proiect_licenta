@@ -6,41 +6,25 @@ import re
 
 # class used for A* search, that stores 2 types of costs: so far and remaining
 class Cell:
-    '''Class used for A star search to determine the cost of paths based on heuristic\n
-    Attributes:
-        parent_y (int): Y coord of Cell's parent
-        parent_x (int): X coord of Cell's parent (from where is accessed)
-        f (float): Total cost; f = g + h
-        h (float): Cost from starting cell
-        g (float): Heuristic (Manhattan / Euclidian / Diagonal) cost from current cell to dest
-    '''
-    def __init__(self, parent = None, f = float('inf'), h = float('inf'), g = 0, 
-                 direction = None, nr_bends: int = 0, nr_90_deg_bends: int = 0):
-        if parent:
-            self.parent = parent
-        else:
-            self.parent = (-1, -1)
+    '''Class used for A star search to determine the cost of paths based on heuristic'''
+    def __init__(self, parent = None, f = float('inf'), h = float('inf'), g = 0):
+        self.parent = parent if parent else (0, 0)
         self.f = f  # Total cost (h + g)
         self.h = h  # Cost from start to cell
         self.g = g  # Heuristic (Manhattan / Euclidian / Diagonal) cost from current cell to dest
-        self.direction = direction
-        self.bends = nr_bends
-        self.bends_90_deg = nr_90_deg_bends
+
+
+    def update(self, f, h, g, parent):
+        self.f = f
+        self.h = h
+        self.g = g
+        self.parent = parent
 
 
 
 # class used to define a path between two points that has width = n x 1;  
 class Path:
-    """Class used to define a path between two points with a specified width.\n
-    Attributes:
-        start_x      (int): The x-coordinate of the starting point.
-        start_y      (int): The y-coordinate of the starting point.
-        dest_x       (int): The x-coordinate of the destination point.
-        dest_y       (int): The y-coordinate of the destination point.
-        path        (list): The list of points representing the main path.
-        width        (int): The width of the path.
-        other_nodes (list): Additional points related to the main path.
-    """
+    """Class used to define a path between two points with a specified width"""
     def __init__(self, start: tuple[int, int], destination: tuple[int,  int], netcode: int = 0,
                  path = None, width: int = 1, clearance: int = 1, mutated: bool = False, simplified_path = None, layer_id = 0):
         self.start          = start
@@ -60,22 +44,17 @@ class Path:
 class Pad:
     '''
     Class used to define a pad for a part.
-    Attributes:
-        center_x       (int, int): (Y, X) coord of pad's center  
-        pad_area           (list): (Y, X) coord occupied by pad on board; useful for irregular shapes or circles
     '''
     def __init__(self, center: tuple[int, int], original_center: tuple[int, int], 
-                 pad_area = None, netcode = None, netname = None, clearance = None, clearance_area = None):
+                 netcode = None, clearance_area = None):
         self.center         = center
         self.original_center= original_center  # inainte de transformari (in nm)
-        self.pad_area       = pad_area   # coord care realizeaza poligonul - lista de tupluri
         self.netcode        = netcode    # folosit pentru a determina carui net ii sunt asociate
-        self.netname        = netname    # posibil folosit pentru a crea folosi custom clearance si width
-        self.clearance      = clearance
         self.clearance_area = clearance_area
 
 
 class PlannedRoute:
+    '''Class used to define a route found for a netclass'''
     def __init__(self, netcode, netname, width: int, clearance: int, coord_list, original_coord = None, existing_conn = None, layer_id = 0):
         self.netcode = netcode
         self.netname = netname
@@ -99,7 +78,7 @@ class PlannedRoute:
 class UnionFind:
     def __init__(self, n):
         self.parent = list(range(n))
-        self.rank = [0] * n
+        self.size = [1] * n  # Inițializăm dimensiunea fiecărei componente cu 1
     
     def find(self, u):
         if self.parent[u] != u:
@@ -110,13 +89,19 @@ class UnionFind:
         root_u = self.find(u)
         root_v = self.find(v)
         if root_u != root_v:
-            if self.rank[root_u] > self.rank[root_v]:
-                self.parent[root_v] = root_u
-            elif self.rank[root_u] < self.rank[root_v]:
+            if root_u > root_v:
                 self.parent[root_u] = root_v
+                self.size[root_v] += self.size[root_u]
+                self._update_all_descendants(root_u, root_v)
             else:
                 self.parent[root_v] = root_u
-                self.rank[root_u] += 1
+                self.size[root_u] += self.size[root_v]
+                self._update_all_descendants(root_v, root_u)
+    
+    def _update_all_descendants(self, old_root, new_root):
+        for i in range(len(self.parent)):
+            if self.find(i) == old_root:
+                self.parent[i] = new_root
 
 
 # User settings
@@ -124,9 +109,9 @@ class UserSettings:
     def __init__(self):
         self.dict = {
             'POW': {'clearance': 500000, 'width': 1000000, 'enabled': False, 'layer_id': 'B.Cu',
-                    'pattern': re.compile(r'POW|POWER|\+\d+V|-\d+V|VDD|VCC')},
+                    'pattern': re.compile(r'POW|POWER|\+\d+V|-\d+V|VDD|VCC|U\d+\-\+')},
             'GND': {'clearance': 200000, 'width': 500000, 'enabled': False, 'layer_id': 'B.Cu',
-                    'pattern': re.compile(r'GND|0V|VSS|VEE')},
+                    'pattern': re.compile(r'GND|0V|VSS|VEE|U\d+\-\-')},
             'ALL': {'clearance': 200000, 'width': 500000, 'enabled': True, 'layer_id': 'B.Cu',
                     'pattern': re.compile(r'.*')}
         }
@@ -167,6 +152,29 @@ class UserSettings:
         return value
 
 
+class Individual:
+        def __init__(self):
+            self.order = None
+            self.paths = None
+            self.unplaced_routes_number = 100
+            self.total_cost = -1
+        
+        def set_values(self, order = [], paths: Path = None, unplaced_routes_number: int = 0, paths_total_cost = -1):
+            self.order  = order    # holds order of routes from input
+            self.paths  = paths    # [[path1], [path2], ...]
+            self.unplaced_routes_number = unplaced_routes_number # from the necessary ones
+            self.total_cost = paths_total_cost      # fitness_value
+
+        def __repr__(self):
+            return repr((self.order, self.paths, self.unplaced_routes_number, self.total_cost))
+        
+        def get_path_cost(self):
+            return self.total_cost
+
+        def __str__(self) -> str:
+            return f'Order: {self.order}; Total cost: {self.total_cost}'
+
+
 def division_int(value, factor):
     return value // factor
 
@@ -199,8 +207,31 @@ def get_route_length(route):        # route = [[,,,] - start,   ..., [,,,], ... 
     return distance
 
 
-def check_90_deg_bend(d1: tuple[int, int], d2: tuple[int, int]):
-    return d1[0] * d2[1] - d2[0] * d1[1] == 0
+def check_bend(parent_coord, current_coord, new_coord):
+    # Determină direcția din parent către current
+    if parent_coord == current_coord:
+        return False
+    dir1 = (current_coord[0] - parent_coord[0], current_coord[1] - parent_coord[1])
+    # Determină direcția din current către new
+    dir2 = (new_coord[0] - current_coord[0], new_coord[1] - current_coord[1])
+       
+    return dir1 != dir2
+
+
+def check_90_deg_bend(p1, p2, p3):
+    y1, x1 = p1
+    y2, x2 = p2
+    y3, x3 = p3
+    
+    # Calculate the sides
+    A = (x2 - x1)**2 + (y2 - y1)**2
+    B = (x3 - x2)**2 + (y3 - y2)**2
+    C = (x3 - x1)**2 + (y3 - y1)**2
+     
+    # Check Pythagoras Formula 
+    if A == (B + C) or B == (A + C) or C == (A + B):
+        return True
+    return False
 
 
 def get_number_of_bends(path):
@@ -209,30 +240,34 @@ def get_number_of_bends(path):
     
     nr_regular_bends = 0
     nr_90_bends = 0
-
-    for index in range(1, len(path)-1):
-        dy1, dx1 = path[index][0] - path[index-1][0], path[index][0] - path[index-1][0]
-        dy2, dx2 = path[index][0] - path[index+1][0], path[index][0] - path[index+1][0]
-        if (dy1, dx1) != (dy2, dx2):
+    p1 = path[0]
+    p2 = path[1]
+    p3 = path[2]
+    for index in range(1, len(path)-2):
+        if check_bend(p1, p2, p3):
             nr_regular_bends += 1
-            if check_90_deg_bend((dy1, dx1), (dy2, dx2)): 
-                nr_90_bends = nr_90_bends + 1 
+            if check_90_deg_bend(p1, p2, p3): 
+                nr_90_bends += 1
+        p1 = p2
+        p2 = p3
+        p3 = path[index+2]
 
-    return nr_regular_bends, nr_90_bends 
+    return nr_regular_bends, nr_90_bends
 
 
 def fitness_function(paths, unplaced_routes_number: int, unplaced_route_penalty = 2):
     total_length = 0
     total_regular_bends, total_90_bends = 0, 0
     for path in paths:
-        route_len = get_route_length(path)
-        nr_regular_bends, nr_90_bends = get_number_of_bends(path)
+        if path:
+            route_len = get_route_length(path)
+            nr_regular_bends, nr_90_bends = get_number_of_bends(path)
 
-        total_length += route_len
-        total_regular_bends += nr_regular_bends
-        total_90_bends += nr_90_bends
+            total_length += route_len
+            total_regular_bends += nr_regular_bends
+            total_90_bends += nr_90_bends
 
-    total_length = total_length * (unplaced_route_penalty ** unplaced_routes_number) + total_regular_bends + (total_90_bends << 4)
+    total_length = (total_length + total_regular_bends + (total_90_bends << 5)) * (unplaced_route_penalty << unplaced_routes_number)
 
     return total_length
 
@@ -312,14 +347,17 @@ def mark_path_in_array(array, path, value, overwrite = True):
         for vertex in path:
             y, x = vertex
             if overwrite or aux[y][x] == 0:
+                log_modificari("mark_path", array, "grid[layer_id]", y, x, value)
                 aux[y][x] = value
+                
     except Exception as e:
         print("Error ", e, "while marking path in array")
     return aux
 
 
 
-def update_grid_with_paths(grid, grid_shape: tuple[int, int], previous_paths):
+def update_grid_with_paths(array, grid_shape: tuple[int, int], previous_paths):
+    grid = copy.deepcopy(array)
     rows, column = grid_shape
     for prev_path in previous_paths:
         netcode = prev_path.netcode
@@ -333,39 +371,52 @@ def update_grid_with_paths(grid, grid_shape: tuple[int, int], previous_paths):
     return grid
 
 
+def log_modificari(nume_functie, grid, object, row, column,value):
+    with open("log_modificari.txt", "a") as file:
+        file.write(f"Functia {nume_functie} a modificat celula obiectului {object} : {(row, column)} din {grid[row, column]} in valoarea {value}\n")
+
+
+
+
 def mark_adjent_path(grid, grid_shape, path, width: int, netcode: int):
     #values = [0, netcode, netcode + 0.5, netcode + 0.7]
     value = netcode + 0.5
     overwrite_values = [0, netcode + 0.7]
     rows, columns = grid_shape
     side = (width - 1) // 2
-    prev_row, prev_column = path[0]
+
     if path:
-        for index in range(1, len(path)-1):
+        prev_row, prev_column = path[1]
+        for index in range(2, len(path)-2):
             row, column = path[index]
             direction_y, direction_x = get_YX_directions((row, column), (prev_row, prev_column))
-            for i in range(1, side + 1):
-                new_row = row + i * direction_y
-                new_col = column + i * direction_x
+            dir_perp_y, dir_perp_x = get_perpendicular_direction(direction_y, direction_x)
+            for i in range(1, side+1):
+                new_row = row + i * dir_perp_y
+                new_col = column + i * dir_perp_x
                 if is_valid((new_row, new_col), (rows, columns)) and is_unblocked(grid, (new_row, new_col), overwrite_values):
+                    log_modificari("adjent", grid, "grid[layer_id]", new_row, new_col, value)
                     grid[new_row][new_col] = value
 
-                new_row = row - i * direction_y
-                new_col = column - i * direction_x
+                new_row = row - i * dir_perp_y
+                new_col = column - i * dir_perp_x
                 if is_valid((new_row, new_col), (rows, columns)) and is_unblocked(grid, (new_row, new_col), overwrite_values):
+                    log_modificari("adjent", grid, "grid[layer_id]", new_row, new_col, value)
                     grid[new_row][new_col] = value
             
-            if width % 2 == 0: # asymetric case; side widths: n, n+1
-                new_row = row + (side + 1) * direction_y
-                new_col = column + (side + 1) * direction_x
+            if not width % 2: # asymetric case; side widths: n, n+1
+                new_row = row + (side + 1) * dir_perp_y
+                new_col = column + (side + 1) * dir_perp_x
                 if is_valid((new_row, new_col), (rows, columns)) and is_unblocked(grid, (new_row, new_col), overwrite_values):
                     if new_row > row or (new_row == row and new_col == column):
+                        log_modificari("adjent", grid, "grid[layer_id]", new_row, new_col, value)
                         grid[new_row][new_col] = value
                 else:
-                    new_row = row - (side + 1) * direction_y
-                    new_col = column - (side + 1) * direction_x # 2
+                    new_row = row - (side + 1) * dir_perp_y
+                    new_col = column - (side + 1) * dir_perp_x # 2
                     if is_valid((new_row, new_col), (rows, columns)) and is_unblocked(grid, (new_row, new_col), overwrite_values):
                         if new_row > row or (new_row == row and new_col == column):
+                            log_modificari("adjent", grid, "grid[layer_id]", new_row, new_col, value)
                             grid[new_row][new_col] = value
 
             prev_row, prev_column = row, column
@@ -374,57 +425,74 @@ def mark_adjent_path(grid, grid_shape, path, width: int, netcode: int):
 
 
 
-def mark_clearance_on_grid(grid, grid_shape, path, path_width: int, clearance_width: int, netcode: int):
-    """
-    Marks the grid with clearance values around the given path.
-
-    Parameters:
-    grid            (array): The grid to be marked.
-    path            (list) : List of (X, Y) coordinates for the main path.
-    clearance_width (int)  : The width of the clearance to be added around the path.
-    path_width      (int)  : The width of the path.
-    clearance_value (int)  : The value to mark for clearance on the grid.
-    """
+def mark_clearance_on_grid(grid, grid_shape, path, path_width, clearance_width, netcode):
     clearance_value = netcode + 0.7
     rows, columns = grid_shape
-    path_side_width = (path_width - 1) // 2
-    max_width = path_side_width + clearance_width + 1
+    half_width = (path_width - 1) // 2
+    max_width = half_width + clearance_width + 1
+    directions = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 0), (0, 1), (1, -1), (1, 0),  (1, 1)]
 
-    for i in range(1, len(path)-1):
+    for i in range(2, len(path)-2):
         current_row, current_column = path[i]
         next_row, next_column = path[i + 1]
         
         direction_y, direction_x = next_row - current_row, next_column - current_column
         direction_perp_y, direction_perp_x = get_perpendicular_direction(direction_y, direction_x)
 
-        for j in range(path_side_width + 1, max_width):
+        for j in range(half_width + 1, max_width):
             new_row = current_row + j * direction_perp_y
             new_col = current_column + j * direction_perp_x
-            if 0 <= new_row < rows and 0 <= new_col < columns:
-                if grid[new_row, new_col] == 0:
-                    grid[new_row, new_col] = clearance_value
+            for t, z in directions:
+                neighbor_row = new_row + t
+                neighbor_column = new_col + z  
+                if is_valid((neighbor_row, neighbor_column), (rows, columns)) and is_unblocked(grid, (neighbor_row, neighbor_column), [0]):
+                    log_modificari("clr", grid, "grid[layer_id]", neighbor_row, neighbor_column, clearance_value)
+                    grid[neighbor_row, neighbor_column] = clearance_value
 
             new_row = current_row - j * direction_perp_y
             new_col = current_column - j * direction_perp_x
-            if 0 <= new_row < rows and 0 <= new_col < columns:
-                if grid[new_row, new_col] == 0:
-                    grid[new_row, new_col] = clearance_value
+            for t, z in directions:
+                neighbor_row = new_row + t
+                neighbor_column = new_col + z  
+                if is_valid((neighbor_row, neighbor_column), (rows, columns)) and is_unblocked(grid, (neighbor_row, neighbor_column), [0]):
+                    log_modificari("clr", grid, "grid[layer_id]", neighbor_row, neighbor_column, clearance_value)
+                    grid[neighbor_row, neighbor_column] = clearance_value
 
         # Handle the asymmetric case if path_width is even
-        if path_width % 2 == 0:
+        if not path_width % 2:
             extra_row = current_row + (max_width + 1) * direction_perp_y
             extra_col = current_column + (max_width + 1) * direction_perp_x
             
-            if 0 <= extra_row < rows and 0 <= extra_col < columns:
-                if grid[extra_row, extra_col] == 0:
-                    grid[extra_row, extra_col] = clearance_value
+            for t, z in directions:
+                neighbor_row = extra_row + t
+                neighbor_column = extra_col + z  
+                if is_valid((neighbor_row, neighbor_column), (rows, columns)) and is_unblocked(grid, (neighbor_row, neighbor_column), [0]):
+                    log_modificari("clr", grid, "grid[layer_id]", neighbor_row, neighbor_column, clearance_value)
+                    grid[neighbor_row, neighbor_column] = clearance_value
 
                 else:
                     extra_row = current_row - (max_width + 1) * direction_perp_y
                     extra_col = current_column - (max_width + 1) * direction_perp_x
                     
-                    if 0 <= extra_row < rows and 0 <= extra_col < columns:
-                        if grid[extra_row, extra_col] == 0:
-                            grid[extra_row, extra_col] = clearance_value
-
+                    for t, z in directions:
+                        neighbor_row = extra_row + t
+                        neighbor_column = extra_col + z  
+                        if is_valid((neighbor_row, neighbor_column), (rows, columns)) and is_unblocked(grid, (neighbor_row, neighbor_column), [0]):
+                            log_modificari("clr", grid, "grid[layer_id]", neighbor_row, neighbor_column, clearance_value)
+                            grid[neighbor_row, neighbor_column] = clearance_value
+    
     return grid
+
+
+def list_unique(seq, id_f=None): 
+   # order preserving
+   if id_f is None:
+       def id_f(x): return x
+   seen = {}
+   result = []
+   for item in seq:
+       marker = id_f(item)
+       if marker in seen: continue
+       seen[marker] = 1
+       result.append(item)
+   return result

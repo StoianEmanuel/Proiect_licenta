@@ -1,13 +1,3 @@
-solution.txt
-lee_routing.py
-*.png
-single_a_star_search.py
 *pycache*
-*.ses
-pcbnew_import_try.py
-testing_pads_coords.py
-notes.txt
-checklist.txt
 *test*.py
 *.txt
-pcbnew_utils2.py
