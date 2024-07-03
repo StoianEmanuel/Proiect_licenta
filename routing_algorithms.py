@@ -1,4 +1,4 @@
-import numpy as np # --
+import numpy as np
 import heapq
 from collections import deque
 import copy
@@ -6,7 +6,7 @@ from utils import Cell, Path, UnionFind, is_destination, is_unblocked, is_valid,
                     h_euclidian, get_perpendicular_direction, check_90_deg_bend, \
                     mark_path_in_array, mark_adjent_path, mark_clearance_on_grid, check_bend
 
-# Check is cell is unlocked relative to asociated netcode
+# Check if cell is unlocked according to netcode
 def is_valid_and_unlocked(array, neighbor_row, neighbor_column, rows, columns, values):
     valid = is_valid((neighbor_row, neighbor_column), (rows, columns))
     if valid:
@@ -51,7 +51,7 @@ def check_3x3_square(array, point: tuple[int, int], array_shape: tuple[int, int]
     return True
 
 
-# Check row (vert, horiz, diag) assigned to current cell for clearance constraint
+# Check line (vert, horiz, diag) assigned to current cell for clearance constraint
 def check_line(array, point: tuple[int, int], sign_y: int, sign_x: int, 
                array_shape: tuple[int, int], offset: int, values):
     current_row, current_column = point
@@ -64,7 +64,7 @@ def check_line(array, point: tuple[int, int], sign_y: int, sign_x: int,
     return True
 
 
-
+# check clearance constraint for a particular cell
 def check_width_and_clearance(array, array_shape: tuple[int, int], point: tuple[int, int], direction_y: int, direction_x: int, 
                               path_values: int, width: int = 1, clearance: int = 1):
     rows, columns = array_shape
@@ -72,36 +72,41 @@ def check_width_and_clearance(array, array_shape: tuple[int, int], point: tuple[
     half_width = (width - 1) // 2
     direction_perp_y, direction_perp_x = get_perpendicular_direction(direction_y, direction_x)
     values = path_values
+
     even_width = False if width % 2 else True
     total_width = half_width + clearance
+
+    current_row = row+direction_y
+    current_col = column+direction_x
+
     def check_main_lines():
-        return check_line(array, (row+direction_y, column+direction_x), direction_perp_y, direction_perp_x, (rows, columns), half_width, values) \
-                and check_line(array, (row+direction_y, column+direction_x), -direction_perp_y, -direction_perp_x, (rows, columns), half_width, values)
+        return check_line(array, (current_row, current_col), direction_perp_y, direction_perp_x, (rows, columns), half_width, values) \
+            and check_line(array, (current_row, current_col), -direction_perp_y, -direction_perp_x, (rows, columns), half_width, values)
 
     def check_clearance_lines():
         for i in range(half_width, total_width):
-            if not check_3x3_square(array, (row + direction_y + i * direction_perp_y,
-                                            column + direction_x + i * direction_perp_x), (rows, columns), values) or \
-                not check_3x3_square(array, (row + direction_y - i * direction_perp_y,
-                                            column + direction_x - i * direction_perp_x), (rows, columns), values):
+            if not check_3x3_square(array, (current_row + i * direction_perp_y,
+                                            current_col + i * direction_perp_x), (rows, columns), values) or \
+                not check_3x3_square(array, (current_row - i * direction_perp_y,
+                                            current_col - i * direction_perp_x), (rows, columns), values):
                     return False
         if even_width:
-            if not check_3x3_square(array, (row + direction_y + total_width * direction_perp_y,
-                                                column + direction_x + total_width * direction_perp_x), (rows, columns), values):
-                if not check_3x3_square(array, (row + direction_y - total_width * direction_perp_y,
-                                                    column + direction_x - total_width * direction_perp_x), (rows, columns), values):
+            if not check_3x3_square(array, (current_row + total_width * direction_perp_y,
+                                                current_col + total_width * direction_perp_x), (rows, columns), values):
+                if not check_3x3_square(array, (current_row - total_width * direction_perp_y,
+                                                    current_col - total_width * direction_perp_x), (rows, columns), values):
                     return False
         return True
 
     def check_even_width_asymmetry():
         if even_width:
-            new_row = row + direction_y + (half_width + 1) * direction_perp_y
-            new_col = column + direction_x + (half_width + 1) * direction_perp_x
+            new_row = current_row + (half_width + 1) * direction_perp_y
+            new_col = current_col + (half_width + 1) * direction_perp_x
             if not is_valid((new_row, new_col), (rows, columns)) or not is_unblocked(array, (new_row, new_col), values) or \
                 not check_3x3_square(array, (new_row + clearance * direction_perp_y, new_col + clearance * direction_perp_x),
                                   (rows, columns), values):
-                new_row = row + direction_y - (half_width + 1) * direction_perp_y
-                new_col = column + direction_x - (half_width + 1) * direction_perp_x
+                new_row = current_row - (half_width + 1) * direction_perp_y
+                new_col = current_col - (half_width + 1) * direction_perp_x
                 if not is_valid((new_row, new_col), (rows, columns)) or not is_unblocked(array, (new_row, new_col), values) or \
                     not check_3x3_square(array, (new_row - clearance * direction_perp_y, new_col - clearance * direction_perp_x),
                                       (rows, columns), values):
@@ -118,7 +123,7 @@ def check_width_and_clearance(array, array_shape: tuple[int, int], point: tuple[
     return True
 
 
-# A star algorihm (modified Dijkstra)
+# A* = modified Dijkstra
 def a_star_search(grid, grid_size: tuple[int, int], start: tuple[int, int], destination: tuple[int, int], 
                   netcode: int, clearance: int = 1, width: int = 1):
     rows, columns = grid_size
@@ -132,7 +137,8 @@ def a_star_search(grid, grid_size: tuple[int, int], start: tuple[int, int], dest
         is_unblocked(grid, (destination_row, destiantion_col), values = [0, netcode]):   # de testat 0 sau 0, netcode, netcode + 0.5, netcode + 0.7
         return []
 
-    # Return the path from source to destination
+
+    # Return path found
     def get_path():
         path = []
         row, column = destination
@@ -144,6 +150,7 @@ def a_star_search(grid, grid_size: tuple[int, int], start: tuple[int, int], dest
         path.append((row, column)) # add start node to path
         path.reverse()
         return path
+
 
     # initialize start of the list
     i = start_row
@@ -160,7 +167,7 @@ def a_star_search(grid, grid_size: tuple[int, int], start: tuple[int, int], dest
     while len(open_list) > 0:
         _, i, j = heapq.heappop(open_list)
 
-        for dir in directions:  # for each direction check the succesor
+        for dir in directions:  # for each direction check the successor
             dir_y, dir_x = dir
             new_i = i + dir_y
             new_j = j + dir_x
@@ -203,13 +210,11 @@ def lee_search(grid, grid_size: tuple, start: tuple[int, int], possible_ends: li
     start_row, start_column = start
 
     if not is_valid((start_row, start_column), (rows, columns)):
-        # print("\nStart invalid")
         return [], (-1, -1)
     
     values = [0, netcode] # 
 
     if not is_unblocked(grid, (start_row, start_column), values):
-        # print("\nStart blocked")
         return [], (-1, -1)
     
     directions = [(0, 1), (0, -1), (1, 0), (-1, 0), (1, 1), (1, -1), (-1, 1), (-1, -1)]
@@ -217,6 +222,8 @@ def lee_search(grid, grid_size: tuple, start: tuple[int, int], possible_ends: li
     mark_path_in_array = np.full(shape = (rows, columns), fill_value = -1, dtype = float)
     dest_x, dest_y = (-1, -1)
 
+
+    # Return path found
     def get_lee_path():
         path = []
 
@@ -254,11 +261,12 @@ def lee_search(grid, grid_size: tuple, start: tuple[int, int], possible_ends: li
             
             current_x, current_y = best_x, best_y
 
+
     end_reached = False
     q = deque() # Create a queue for BFS
     visited = set()
 
-    # Add start to BFS q
+    # Add start to BFS queue
     i, j = start_row, start_column
     mark_path_in_array[i][j] = 0
     visited.add((i, j))
@@ -279,18 +287,16 @@ def lee_search(grid, grid_size: tuple, start: tuple[int, int], possible_ends: li
 
             if end_reached:
                 dest_y, dest_x = i, j
-                #print(f"\nStart (pad) ({start_row}, {start_column}) reached")
                 path = get_lee_path()
                 return path
 
-        # for each direction check the succesor
+        # for each direction check the successor
         for dir in directions:
             dir_y, dir_x = dir
             new_i = i + dir_y
             new_j = j + dir_x
             if is_valid((new_i, new_j), (rows, columns)) and is_unblocked(grid, (new_i, new_j), values) and \
-                (new_i, new_j) not in visited:#mark_path_in_array[new_i][new_j] == -1: #(new_i, new_j) not in visited: #visited[new_i][new_j] == False:
-
+                (new_i, new_j) not in visited:
                 if check_width_and_clearance(grid, (rows, columns), (i, j), dir_y, dir_x, 
                                              [0, netcode, netcode + 0.5], width, clearance):
                     visited.add((new_i, new_j))
@@ -305,11 +311,11 @@ def get_paths(template_grid, grid_shape: tuple[int, int, int], planned_routes: d
               pads: list = None):
     layers, rows, columns = grid_shape
     paths = []
-    route_index = 0
     grid = copy.deepcopy(template_grid)
 
     aux_routes = copy.deepcopy(planned_routes)
 
+    # union find
     all_points = list(set(point for netcode in routing_order 
                           for point in aux_routes[netcode].coord_list +
                             [(x1, y1) for (x1, y1, x2, y2) in aux_routes[netcode].existing_conn] +
@@ -326,22 +332,21 @@ def get_paths(template_grid, grid_shape: tuple[int, int, int], planned_routes: d
             for (x1, y1, x2, y2) in route.existing_conn:
                 uf.union(point_to_index[(x1, y1)], point_to_index[(x2, y2)])
     
+    # Start routing accord to order from routing_order
     for netcode in routing_order:
         route = aux_routes[netcode]
         nr_pads = len(route.original_coord)
         width = route.width
         clearance = route.clearance
-        points  = route.coord_list
-        other_points = list(set(point for point in route.existing_conn))
+        points  = route.coord_list  # unconnected pads
+        other_points = list(set(point for point in route.existing_conn)) # connected pads
         original_coord = route.original_coord
         layer_id = route.layer_id # 0 - BOTTOM; 1 - TOP
 
         grid_copy = copy.deepcopy(grid[layer_id][:][:])
-                
-        route_index += 1
-        
-        if nr_pads == 2:
-            for pad in pads:
+                        
+        if nr_pads == 2: # point to point - perform A* search
+            for pad in pads: # identify pad area to unblock in grid_copy
                 if pad.original_center in original_coord:
                     pad_clearance = pad.clearance_area
                     for point, w in pad_clearance.items():
@@ -354,13 +359,14 @@ def get_paths(template_grid, grid_shape: tuple[int, int, int], planned_routes: d
 
             path = a_star_search(grid_copy, (rows, columns), start_point, dest_point, netcode, clearance, width)
 
-        else:
+        else:   # multiple points - perform Lee search
             path = None
             dest_point = (-1, -1)
-            def find_valid_start(points, other_points):
+
+            def find_valid_coord_set(points, other_points): # find starting and dest. pads 
                 all_points = list(set([(x1, y1) for (x1, y1, x2, y2) in other_points] + 
                                       [(x2, y2) for (x1, y1, x2, y2) in other_points] + points))
-                # Sortăm punctele de start după mărimea componentei
+                # Sort points according to conex length
                 points_sorted = sorted(all_points, key=lambda point: uf.size[uf.find(point_to_index[point])])
 
                 for point in points_sorted:
@@ -371,8 +377,9 @@ def get_paths(template_grid, grid_shape: tuple[int, int, int], planned_routes: d
 
                 return None, None, None
             
-            start_point, start_point_idx, available_endpoints = find_valid_start(points, other_points)
+            start_point, start_point_idx, available_endpoints = find_valid_coord_set(points, other_points)
 
+            # Find pads areas to unblock regions
             if start_point and available_endpoints:
                 for pad in pads:
                     if pad.center == start_point or pad.center in available_endpoints:
@@ -399,11 +406,12 @@ def get_paths(template_grid, grid_shape: tuple[int, int, int], planned_routes: d
             except Exception as e:
                 ... # print(e)
         
+        # If not destination pad found
         elif dest_point == (-1, -1) or not path:
-            # print("Unplaced route")
             paths.append(Path(start_point, dest_point, netcode, [], width, clearance, False, None, layer_id))
             continue
         
+        # mark path and clearance in grid
         grid[layer_id][:][:] = mark_path_in_array(grid[layer_id][:][:], path, netcode)
         grid[layer_id][:][:] = mark_adjent_path(grid[layer_id][:][:], (rows, columns), path, width, netcode)
         grid[layer_id][:][:] = mark_clearance_on_grid(grid[layer_id][:][:], (rows, columns), path, width, clearance, netcode)
@@ -411,12 +419,12 @@ def get_paths(template_grid, grid_shape: tuple[int, int, int], planned_routes: d
         path_found = Path(start_point, dest_point, netcode, path, width, clearance, False, None, layer_id)
         paths.append(path_found)
 
-        for pad in pads:
-            if pad.center == dest_point or pad.center == start_point:
-                pad_clearance = pad.clearance_area
-                for point, w in pad_clearance.items():
-                    y, x = point
-                    for j in range(w):
-                        grid[layer_id][y][x+j] = -1
+        # for pad in pads:
+        #     if pad.center == dest_point or pad.center == start_point:
+        #         pad_clearance = pad.clearance_area
+        #         for point, w in pad_clearance.items():
+        #             y, x = point
+        #             for j in range(w):
+        #                 grid[layer_id][y][x+j] = -1
     
     return paths

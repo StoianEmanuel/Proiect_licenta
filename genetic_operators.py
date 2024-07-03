@@ -32,7 +32,7 @@ def generate_individual(args):
         return None
 
 
-# operations used for crossover; it is applied directly onto the children
+# Operations used for crossover; it is applied directly onto the children
 def crossover_order(seed, child1_order, child2_order, crossover_points: int = 1):
     random.seed(seed)
     size = len(child1_order)
@@ -70,7 +70,6 @@ def init_worker():
     set_high_priority()
 
 
-
 def crossover(seed, crossover_points, args):
     parent1, parent2, template_grid, planned_routes, pads_list, LAYERS, ROWS, COLUMNS = args
     random.seed(seed)
@@ -80,10 +79,8 @@ def crossover(seed, crossover_points, args):
 
     seed1 = random.random()
 
-    aux_seed = random.random()
-    child_order1 = crossover_order(aux_seed, parent_order1, parent_order2, crossover_points)
+    child_order1 = crossover_order(seed1, parent_order1, parent_order2, crossover_points)
     if len(parent1.paths) != len(parent2.paths):
-        random.seed(aux_seed)
         return generate_individual((seed1, child_order1, None, template_grid, planned_routes, child_order1, LAYERS, ROWS, COLUMNS))
 
     index1 = get_similarity_index(parent_order1, child_order1)
@@ -109,7 +106,7 @@ def crossover(seed, crossover_points, args):
     slice_order1 = parent1.order[index1:]
     new_paths1 = get_paths(grid1, (LAYERS, ROWS, COLUMNS), aux_planned_routes1, slice_order1, pads_list)
     
-    # Step 4: Combine initial and new paths to create children
+    # Combine initial and new paths to create children
     child1 = Individual()
     child1_path = previous_paths_parent1 + new_paths1 if previous_paths_parent1 else new_paths1
     child1.set_values(parent1.order, child1_path)
@@ -255,7 +252,7 @@ def order_mutation(seed, parent: Individual, args):
         
         new_paths = get_paths(grid, (LAYERS, ROWS, COLUMNS), aux_planned_routes, slice_order, pads_list)
                 
-        # Step 4: Combine initial and new paths to create children
+        # Combine initial and new paths to create children
         child = Individual()
         child.set_values(parent.order, previous_paths_parent + new_paths)
         return child

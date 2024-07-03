@@ -149,7 +149,7 @@ def validate_positive_integer(P):
     return P == "" or (P.isdigit() and int(P) > 0)
 
 
-# Create a GUI app
+# GUI app
 app = tk.Tk()
 app.title('Rutare cu Algoritmi Genetici')
 app.geometry('1050x475')
@@ -161,7 +161,7 @@ text = tk.Text(app, height=20, width=60)
 processing_label = tk.Label(app, text="", font=("Arial", 12))
 open_button = ttk.Button(app, text='Selectează fișier', command=lambda: choose_file() if processing_thread is None else None)
 stop_button = ttk.Button(app, text='Oprire', command=lambda: force_thread_stop() if processing_thread is not None else None)
-stop_button.grid_remove()  # Hide stop button initially
+stop_button.grid_remove()  # Hide stop button
 keep_var = tk.BooleanVar()
 keep_ck = tk.Checkbutton(app, text="Păstrarea rutelor existente", variable=keep_var)
 layer_var = tk.StringVar(value="BOTTOM")
@@ -175,14 +175,12 @@ layer_dropdown.grid(column=0, row=4, padx=20, pady=10)
 text.grid(column=1, row=0, rowspan=9, padx=20, pady=10)
 processing_label.grid(column=1, row=9, pady=10)
 
-
 # Progress bar widget
 progress_bar = ttk.Progressbar(app, orient="horizontal", length=400, mode="determinate")
 progress_bar.grid(column=1, row=10, pady=20)
 progress_bar.grid_remove()
 
-
-# Right column (Checkboxes and entries)
+# Right column (user settings)
 var1 = tk.BooleanVar()
 all_ck = tk.Checkbutton(app, text="Toate traseele", variable=var1, command=lambda: update_entries()).grid(row=0, column=2, sticky='w')
 tk.Label(app, text='Lățime').grid(row=1, column=2, padx=30, sticky='w')
@@ -210,9 +208,9 @@ e6 = tk.Entry(app)
 e5.grid(row=7, column=3)
 e6.grid(row=8, column=3, pady=(0, 20))
 
-tk.Label(app, text='Dimensiunile sunt exprimate în')
+tk.Label(app, text='Dimensiunile sunt exprimate în nm')
 
-# Update entries based on checkboxes
+# Update entries based on checkboxes status
 def update_entries():
     if processing_thread is None:
         e1.config(state='normal' if var1.get() else 'disabled')
@@ -267,12 +265,12 @@ def set_default_input_values():
 set_default_input_values()
 
 if __name__ == "__main__":
-    # Delete progress file
+    # Delete progress and done filea
     if os.path.exists("progress.txt"):
         os.remove("progress.txt")
 
     if os.path.exists("done.txt"):
         os.remove("done.txt")
 
-    app.after(1000, update_progress)  # Apelează funcția inițial
+    app.after(1000, update_progress)  # Start updating progress bar
     app.mainloop()

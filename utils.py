@@ -9,7 +9,7 @@ class Cell:
         self.parent = parent if parent else (0, 0)
         self.f = f  # Total cost (h + g)
         self.h = h  # Cost from start to cell
-        self.g = g  # Heuristic (Manhattan / Euclidian / Diagonal) cost from current cell to dest
+        self.g = g  # Heuristic (Manhattan / Euclidian) cost from current cell to dest
 
 
     def update(self, f, h, g, parent):
@@ -51,7 +51,8 @@ class Pad:
 
 class PlannedRoute:
     '''Class used to define a route found for a netclass'''
-    def __init__(self, netcode, netname, width: int, clearance: int, coord_list, original_coord = None, existing_conn = None, layer_id = 0):
+    def __init__(self, netcode, netname, width: int, clearance: int, coord_list, original_coord = None, 
+                 existing_conn = None, layer_id = 0):
         self.netcode = netcode
         self.netname = netname
         self.width = width
@@ -179,7 +180,7 @@ def division_int(value, factor):
     return value // factor
 
 
-# check if cell / move is valid
+# check if cell can be used
 def is_unblocked(array, point: tuple[int, int], values: list):
     row, column = point
     return array[row][column] in values
@@ -196,7 +197,7 @@ def is_valid(point: tuple[int, int], array_shape: tuple[int, int]):
 def is_destination(current_point: tuple[int, int], destination_point: tuple[int, int]):
     return current_point == destination_point
 
-# poate voi insera si partea de bends
+
 def get_route_length(route):        # route = [[,,,] - start,   ..., [,,,], ... ,      [,,,] - dest]
     distance = 0
     n = len(route)-1
@@ -234,7 +235,7 @@ def check_90_deg_bend(p1, p2, p3):
     return False
 
 
-# Returns no of 90 deg bends, and total no of bends for a specific list of coordinates 
+# Returns nr of 90 deg bends, and total nr of bends for a specific list of coordinates 
 def get_number_of_bends(path):
     if len(path) < 3:
         return 0, 0
@@ -256,7 +257,7 @@ def get_number_of_bends(path):
     return nr_regular_bends, nr_90_bends
 
 # Associate score to individuals based on tracks total length, unplaced nets and number of bends
-def fitness_function(paths, unplaced_routes_number: int, unplaced_route_penalty = 2):
+def fitness_function(paths, unplaced_routes_nr: int, unplaced_route_penalty = 2):
     total_length = 0
     total_regular_bends, total_90_bends = 0, 0
     for path in paths:
@@ -268,7 +269,8 @@ def fitness_function(paths, unplaced_routes_number: int, unplaced_route_penalty 
             total_regular_bends += nr_regular_bends
             total_90_bends += nr_90_bends
 
-    total_length = round((total_length + total_regular_bends + (total_90_bends << 5)) * (unplaced_route_penalty << unplaced_routes_number), 7)
+    total_length = round(
+                (total_length+total_regular_bends+(total_90_bends<<5)) * (unplaced_route_penalty<<unplaced_routes_nr), 7)
 
     return total_length
 
@@ -295,6 +297,7 @@ def simplify_path(path):
 
         simplified_path.append(path[-1])
     return simplified_path
+
 
 # Returns a list with tracks
 def get_simplified_paths(paths_list):
@@ -325,11 +328,9 @@ def get_perpendicular_direction(direction_y: int, direction_x: int):
 
 
 '''movement heuristics types'''
-# 4 directions
 def h_manhattan(point1: tuple[int, int], point2: tuple[int, int]):
     return abs(point1[1] - point2[1]) + abs(point1[0] - point2[0])
 
-# any direction
 def h_euclidian(point1: tuple[int, int], point2: tuple[int, int]):
     return sqrt((point1[1] - point2[1])**2 + (point1[0] - point2[0])**2)
 ''''''
@@ -338,7 +339,6 @@ def h_euclidian(point1: tuple[int, int], point2: tuple[int, int]):
 def get_YX_directions(current_poz: tuple[int, int], previous_poz: tuple[int, int]):
     '''Returns distance for X and Y between 2 points reprezented as (int, int)'''
     return current_poz[0] - previous_poz[0], current_poz[1] - previous_poz[1]
-
 
 
 def mark_path_in_array(array, path, value, overwrite = True):
@@ -372,11 +372,10 @@ def update_grid_with_paths(array, grid_shape: tuple[int, int], previous_paths):
     return grid
 
 
+# Keeps history of template grid modifications
 def log_modificari(nume_functie, grid, object, row, column,value):
     with open("log_modificari.txt", "a") as file:
         file.write(f"Functia {nume_functie} a modificat celula obiectului {object} : {(row, column)} din {grid[row, column]} in valoarea {value}\n")
-
-
 
 
 def mark_adjent_path(grid, grid_shape, path, width: int, netcode: int):
@@ -446,7 +445,8 @@ def mark_clearance_on_grid(grid, grid_shape, path, path_width, clearance_width, 
             for t, z in directions:
                 neighbor_row = new_row + t
                 neighbor_column = new_col + z  
-                if is_valid((neighbor_row, neighbor_column), (rows, columns)) and is_unblocked(grid, (neighbor_row, neighbor_column), [0]):
+                if is_valid((neighbor_row, neighbor_column), (rows, columns)) and is_unblocked(grid, 
+                                                                                        (neighbor_row, neighbor_column), [0]):
                     log_modificari("clr", grid, "grid[layer_id]", neighbor_row, neighbor_column, clearance_value)
                     grid[neighbor_row, neighbor_column] = clearance_value
 
@@ -455,7 +455,8 @@ def mark_clearance_on_grid(grid, grid_shape, path, path_width, clearance_width, 
             for t, z in directions:
                 neighbor_row = new_row + t
                 neighbor_column = new_col + z  
-                if is_valid((neighbor_row, neighbor_column), (rows, columns)) and is_unblocked(grid, (neighbor_row, neighbor_column), [0]):
+                if is_valid((neighbor_row, neighbor_column), (rows, columns)) and is_unblocked(grid, 
+                                                                                        (neighbor_row, neighbor_column), [0]):
                     log_modificari("clr", grid, "grid[layer_id]", neighbor_row, neighbor_column, clearance_value)
                     grid[neighbor_row, neighbor_column] = clearance_value
 
@@ -467,7 +468,8 @@ def mark_clearance_on_grid(grid, grid_shape, path, path_width, clearance_width, 
             for t, z in directions:
                 neighbor_row = extra_row + t
                 neighbor_column = extra_col + z  
-                if is_valid((neighbor_row, neighbor_column), (rows, columns)) and is_unblocked(grid, (neighbor_row, neighbor_column), [0]):
+                if is_valid((neighbor_row, neighbor_column), (rows, columns)) and is_unblocked(grid, 
+                                                                                        (neighbor_row, neighbor_column), [0]):
                     log_modificari("clr", grid, "grid[layer_id]", neighbor_row, neighbor_column, clearance_value)
                     grid[neighbor_row, neighbor_column] = clearance_value
 
@@ -478,7 +480,8 @@ def mark_clearance_on_grid(grid, grid_shape, path, path_width, clearance_width, 
                     for t, z in directions:
                         neighbor_row = extra_row + t
                         neighbor_column = extra_col + z  
-                        if is_valid((neighbor_row, neighbor_column), (rows, columns)) and is_unblocked(grid, (neighbor_row, neighbor_column), [0]):
+                        if is_valid((neighbor_row, neighbor_column), (rows, columns)) and is_unblocked(grid, 
+                                                                                                (neighbor_row, neighbor_column), [0]):
                             log_modificari("clr", grid, "grid[layer_id]", neighbor_row, neighbor_column, clearance_value)
                             grid[neighbor_row, neighbor_column] = clearance_value
     
