@@ -6,20 +6,52 @@ from utils import Cell, Path, UnionFind, is_destination, is_unblocked, is_valid,
                     h_euclidian, get_perpendicular_direction, check_90_deg_bend, \
                     mark_path_in_array, mark_adjent_path, mark_clearance_on_grid, check_bend
 
+# Check is cell is unlocked relative to asociated netcode
+def is_valid_and_unlocked(array, neighbor_row, neighbor_column, rows, columns, values):
+    valid = is_valid((neighbor_row, neighbor_column), (rows, columns))
+    if valid:
+        unblocked = is_unblocked(array, (neighbor_row, neighbor_column), values)
+        return False if not unblocked else array[neighbor_row][neighbor_column] % 10 < 0.6
+    return True
+
+
+# Check current cell's neighbors for cleareance constraint
 def check_3x3_square(array, point: tuple[int, int], array_shape: tuple[int, int], values):
     rows, columns = array_shape
     current_row, current_column = point
-    directions = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0),  (1, 1)]
-    for j, k in directions:
-        neighbor_row = current_row + j
-        neighbor_column = current_column + k  
-        if is_valid((neighbor_row, neighbor_column), (rows, columns)) and not is_unblocked(array, (neighbor_row, neighbor_column), values): #0.69-0.7 folosit pentru a marca un clearance, daca as avea un clearance existent
-            if array[neighbor_row][neighbor_column] % 10 < 0.6:
-                return False
+
+    neighbors = [(current_row - 1, current_column - 1),
+                 (current_row - 1, current_column    ),
+                 (current_row - 1, current_column + 1),
+                 (current_row    , current_column - 1),
+                 (current_row    , current_column    ),
+                 (current_row    , current_column + 1),
+                 (current_row + 1, current_column - 1),
+                 (current_row + 1, current_column    ),
+                 (current_row + 1, current_column + 1),]
+    
+    # loop unrolling for cells verfications instead of directions = [(-1,-1), (-1,0), ... , (1,1)]
+    if not is_valid_and_unlocked(array, neighbors[0][0], neighbors[0][1], rows, columns, values):
+        return False
+    if not is_valid_and_unlocked(array, neighbors[1][0], neighbors[1][1], rows, columns, values):
+        return False
+    if not is_valid_and_unlocked(array, neighbors[2][0], neighbors[2][1], rows, columns, values):
+        return False
+    if not is_valid_and_unlocked(array, neighbors[3][0], neighbors[3][1], rows, columns, values):
+        return False
+    if not is_valid_and_unlocked(array, neighbors[4][0], neighbors[4][1], rows, columns, values):
+        return False
+    if not is_valid_and_unlocked(array, neighbors[5][0], neighbors[5][1], rows, columns, values):
+        return False
+    if not is_valid_and_unlocked(array, neighbors[6][0], neighbors[6][1], rows, columns, values):
+        return False
+    if not is_valid_and_unlocked(array, neighbors[7][0], neighbors[7][1], rows, columns, values):
+        return False  
     
     return True
 
 
+# Check row (vert, horiz, diag) assigned to current cell for clearance constraint
 def check_line(array, point: tuple[int, int], sign_y: int, sign_x: int, 
                array_shape: tuple[int, int], offset: int, values):
     current_row, current_column = point
@@ -164,7 +196,7 @@ def a_star_search(grid, grid_size: tuple[int, int], start: tuple[int, int], dest
 
 
 
-# routing with lee
+# Lee search == modified BFS
 def lee_search(grid, grid_size: tuple, start: tuple[int, int], possible_ends: list,
                width: int, clearance: int, netcode: int):
     rows, columns = grid_size
@@ -187,7 +219,6 @@ def lee_search(grid, grid_size: tuple, start: tuple[int, int], possible_ends: li
 
     def get_lee_path():
         path = []
-        #mark_path_in_array[start_row][start_column] = 0
 
         previous_direction = None  # Inițializează direcția anterioară ca fiind None
         best_y, best_x = dest_y, dest_x
@@ -244,12 +275,7 @@ def lee_search(grid, grid_size: tuple, start: tuple[int, int], possible_ends: li
                     y, x = dest
                     if is_destination((i, j), (y, x)):
                         end_reached = True
-                        # print(f"\n\nDestination (pad) ({i}, {j}) reached")
                         break
-            # elif grid[i][j] == netcode:
-            #     end_reached = True
-            #     if not hide_prints:
-            #         print(f"\n\nDestination (route) ({i}, {j}) reached")
 
             if end_reached:
                 dest_y, dest_x = i, j
@@ -271,10 +297,10 @@ def lee_search(grid, grid_size: tuple, start: tuple[int, int], possible_ends: li
                     new_cost = cost + h_euclidian((i, j), (new_i, new_j))
                     q.append((new_i, new_j, new_cost))
     
-    #print("\nDestination not reached")
+    # print("\nDestination not reached")
     return [], (-1, -1)
 
-
+# Apply Lee and A star to find tracks
 def get_paths(template_grid, grid_shape: tuple[int, int, int], planned_routes: dict, routing_order: list, 
               pads: list = None):
     layers, rows, columns = grid_shape
@@ -290,19 +316,18 @@ def get_paths(template_grid, grid_shape: tuple[int, int, int], planned_routes: d
                             [(x2, y2) for (x1, y1, x2, y2) in aux_routes[netcode].existing_conn]
                         ))
 
-    #all_points = list(set(point for netcode in routing_order for point in planned_routes[netcode].coord_list))
     point_to_index = {point: idx for idx, point in enumerate(all_points)}
     uf = UnionFind(len(all_points))
 
-    # Unim punctele din existing_conn
+    # Conex graph with points from existing_conn
     for netcode in routing_order:
-        route = copy.deepcopy(aux_routes[netcode])
+        route = aux_routes[netcode]
         if route.existing_conn:
             for (x1, y1, x2, y2) in route.existing_conn:
                 uf.union(point_to_index[(x1, y1)], point_to_index[(x2, y2)])
     
     for netcode in routing_order:
-        route = copy.deepcopy(aux_routes[netcode])
+        route = aux_routes[netcode]
         nr_pads = len(route.original_coord)
         width = route.width
         clearance = route.clearance
@@ -329,8 +354,6 @@ def get_paths(template_grid, grid_shape: tuple[int, int, int], planned_routes: d
 
             path = a_star_search(grid_copy, (rows, columns), start_point, dest_point, netcode, clearance, width)
 
-            # if not path:
-            #     print("Path not found existing!")
         else:
             path = None
             dest_point = (-1, -1)
@@ -349,7 +372,7 @@ def get_paths(template_grid, grid_shape: tuple[int, int, int], planned_routes: d
                 return None, None, None
             
             start_point, start_point_idx, available_endpoints = find_valid_start(points, other_points)
-           
+
             if start_point and available_endpoints:
                 for pad in pads:
                     if pad.center == start_point or pad.center in available_endpoints:
@@ -360,10 +383,8 @@ def get_paths(template_grid, grid_shape: tuple[int, int, int], planned_routes: d
                                 grid_copy[y][x+j] = 0
 
                 path, dest_point = lee_search(grid_copy, (rows, columns), start_point, available_endpoints, width, clearance,
-                                                netcode)   # momentan nu se va putea intersecta;  netcode + 0.7
-            # else:
-            #     print("Already existing!")
-
+                                                    netcode)   # momentan nu se va putea intersecta;  netcode + 0.7
+        
         if dest_point != (-1, -1):
             aux_routes[netcode].existing_conn.append((start_point[0], start_point[1], dest_point[0], dest_point[1]))
             try:

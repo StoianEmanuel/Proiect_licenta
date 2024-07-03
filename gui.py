@@ -9,7 +9,6 @@ from tktooltip import ToolTip
 
 # Initialize global variables
 filename = None
-output_file = None
 processing_thread = None
 event = threading.Event()
 
@@ -17,6 +16,10 @@ event = threading.Event()
 # Function to update progress bar
 def update_progress():
     global processing_thread
+
+    if os.path.exists('done.txt'):
+        processing_label.config(text="Procesare finalizată!", justify='center')
+
     if (processing_thread and processing_thread.is_alive() or event or not event.is_set()) and os.path.isfile("progress.txt"):
         progress_bar.grid()
         try:
@@ -26,9 +29,9 @@ def update_progress():
                     progress = int(data[1])
                     max_rounds = int(data[0])
                     progress_bar['value'] = progress
-                    processing_label.config(text=f"Progress {int(progress*max_rounds/100)} / {max_rounds}", justify='center')
-                    if progress == 100:
-                        processing_label.config(text="Processing complete!", justify='center')
+                    processing_label.config(text=f"Progres {int(progress*max_rounds/100)} / {max_rounds}", justify='center')
+                    if progress >= 100:
+                        processing_label.config(text="Procesare finalizată!", justify='center')
                 else:
                     progress_bar['value'] = 0
                     processing_label.config(text="", justify='center')
@@ -45,55 +48,47 @@ def update_progress():
     app.after(1000, update_progress)
 
 
-
 # Function performed on a thread
 def task(event, params):
     try:
         global filename
         run_genetic_algorithm(filename=filename, event=event, **params)
-        stop_button.grid_remove()
     finally:
         event.clear()
-        global processing_thread
+        global processing_thread, stop_button
+        stop_button.grid_remove()
         processing_thread = None
+        app.after(0, process_complete_cleanup)
 
 
 def process_complete_cleanup():
-    global processing_thread, event
+    global processing_thread, event, open_button, stop_button
+    if os.path.exists('progress.txt'):
+        os.remove('progress.txt')
     stop_button.grid_remove()
+    open_button = ttk.Button(app, text='Selectează fișier', command=lambda: choose_file() if processing_thread is None else None)
+    open_button.grid(column=0, row=0, padx=20, pady=10, rowspan=2)
     processing_thread = None
     event = threading.Event()
 
 
-
 # Forcefully stops the processing thread and cleans up resources
 def force_thread_stop():
-    global processing_thread, event
+    global processing_thread, event, stop_button
     event.set()
     stop_button.grid_remove()
     if processing_thread is not None:
-        processing_label.config(text="Stopping thread")
-        stop_thread = threading.Thread(target=wait_for_thread_completion)
-        stop_thread.start()
+        processing_label.config(text="Oprire căutare")
+        # Wait for the processing thread to finish
+        while processing_thread.is_alive():
+            processing_thread.join(timeout=0.1)  # Check every 0.1 seconds
 
-
-# Waits for the processing thread to complete and updates the interface
-def wait_for_thread_completion():
-    global processing_thread
-    if processing_thread is not None:
-        processing_thread.join()  # Wait for the thread to finish
         processing_thread = None
-        app.after(0, update_interface)  # Update the interface after the thread ends
-
-
-# Updates the interface after the processing thread has stopped
-def update_interface(text="Thread stopped"):
-    processing_label.config(text=text)
 
 
 # Function to open the file dialog
 def choose_file():
-    filetypes = (("KiCad PCB files", "*.kicad_pcb"), ("All files", "*.*"))
+    filetypes = (("Fișiere KiCad PCB", "*.kicad_pcb"), ("Toate fișierele", "*.*"))
     text.delete('1.0', 'end')
     processing_label.config(text="")
 
@@ -101,17 +96,11 @@ def choose_file():
     processing_thread = None
     event.clear()
     try:
-        global filename, output_file
+        global filename
         f = fd.askopenfile(filetypes=filetypes)
-        text.insert('1.0', f.read())
         filename = f.name
+        text.insert('1.0', f"filename:\t{filename}\n\ncontent:\n{f.read()}")
         f.close()
-
-        dot_index = filename.rfind(".")
-        if dot_index != -1:
-            output_file = filename[:dot_index] + ".ses"
-        else:
-            output_file = filename + ".ses"
 
         params = {
             "all": var1.get(),
@@ -127,20 +116,26 @@ def choose_file():
             "layer": 1 if layer_var.get() == "BOTTOM" else 2
         }
 
-        event = threading.Event()
-        processing_thread = threading.Thread(target=task, args=(event, params))
-        processing_thread.start()
-        stop_button.grid(column=0, row=3, pady=10)
-        processing_label.config(text="Processing...", justify='center')
-
+        global open_button, stop_button
+        open_button.grid_remove()
+        stop_button = ttk.Button(app, text='Oprire', command=lambda: force_thread_stop() if processing_thread is not None else None)
+        stop_button.grid(column=0, row=7, pady=10)
+        processing_label.config(text="Preprocesare...", justify='center')
+        
         # Delete progress file
         if os.path.exists("progress.txt"):
             os.remove("progress.txt")
 
+        if os.path.exists("done.txt"):
+            os.remove("done.txt")
+        
+
+        event = threading.Event()
+        processing_thread = threading.Thread(target=task, args=(event, params))
+        processing_thread.start()
+
     except Exception as e:
         processing_label.config(text=f"Error: {str(e)}", justify='center')
-
-    app.after(0, process_complete_cleanup)
 
 
 def validate_value(value, validator):
@@ -156,16 +151,16 @@ def validate_positive_integer(P):
 
 # Create a GUI app
 app = tk.Tk()
-app.title('Routing with Genetic Algorithm')
-app.geometry('1000x450')
-app.minsize(width=1000, height=450)
+app.title('Rutare cu Algoritmi Genetici')
+app.geometry('1050x475')
+app.minsize(width=1050, height=475)
 
 
 # Define widgets
 text = tk.Text(app, height=20, width=60)
 processing_label = tk.Label(app, text="", font=("Arial", 12))
 open_button = ttk.Button(app, text='Selectează fișier', command=lambda: choose_file() if processing_thread is None else None)
-stop_button = ttk.Button(app, text='Stop processing', command=lambda: force_thread_stop() if processing_thread is not None else None)
+stop_button = ttk.Button(app, text='Oprire', command=lambda: force_thread_stop() if processing_thread is not None else None)
 stop_button.grid_remove()  # Hide stop button initially
 keep_var = tk.BooleanVar()
 keep_ck = tk.Checkbutton(app, text="Păstrarea rutelor existente", variable=keep_var)
@@ -189,27 +184,27 @@ progress_bar.grid_remove()
 
 # Right column (Checkboxes and entries)
 var1 = tk.BooleanVar()
-all_ck = tk.Checkbutton(app, text="Toate traseele", variable=var1, justify="left", command=lambda: update_entries()).grid(row=0, column=2, padx=20)
-tk.Label(app, text='Width').grid(row=1, column=2, padx=20)
-tk.Label(app, text='Clearance').grid(row=2, column=2, padx=20, pady=(0, 20))
+all_ck = tk.Checkbutton(app, text="Toate traseele", variable=var1, command=lambda: update_entries()).grid(row=0, column=2, sticky='w')
+tk.Label(app, text='Lățime').grid(row=1, column=2, padx=30, sticky='w')
+tk.Label(app, text='Distanța min.').grid(row=2, column=2, padx=30, pady=(0, 20), sticky='w')
 e1 = tk.Entry(app)
 e2 = tk.Entry(app)
 e1.grid(row=1, column=3)
 e2.grid(row=2, column=3, pady=(0, 20))
 
 var2 = tk.BooleanVar()
-power_ck = tk.Checkbutton(app, text="Trasee de alimentare", variable=var2, justify="left", command=lambda: update_entries()).grid(row=3, column=2, pady=10)
-tk.Label(app, text='Width').grid(row=4, column=2, padx=20)
-tk.Label(app, text='Clearance').grid(row=5, column=2, padx=20, pady=(0, 20))
+power_ck = tk.Checkbutton(app, text="Trasee de alimentare", variable=var2, command=lambda: update_entries()).grid(row=3, column=2, sticky='w')
+tk.Label(app, text='Lățime').grid(row=4, column=2, padx=30, sticky='w')
+tk.Label(app, text='Distanța min.').grid(row=5, column=2, padx=30, pady=(0, 20), sticky='w')
 e3 = tk.Entry(app)
 e4 = tk.Entry(app)
 e3.grid(row=4, column=3)
 e4.grid(row=5, column=3, pady=(0, 20))
 
 var3 = tk.BooleanVar()
-ground_ck = tk.Checkbutton(app, text="Trasee de masă", variable=var3, justify="left", command=lambda: update_entries()).grid(row=6, column=2, padx=20, pady=10)
-tk.Label(app, text='Width').grid(row=7, column=2, padx=20)
-tk.Label(app, text='Clearance').grid(row=8, column=2, padx=20, pady=(0, 20))
+ground_ck = tk.Checkbutton(app, text="Trasee de masă", variable=var3, command=lambda: update_entries()).grid(row=6, column=2, sticky="w")
+tk.Label(app, text='Lățime').grid(row=7, column=2, padx=30, sticky='w')
+tk.Label(app, text='Distanța min.').grid(row=8, column=2, padx=30, pady=(0, 20), sticky='w')
 e5 = tk.Entry(app)
 e6 = tk.Entry(app)
 e5.grid(row=7, column=3)
@@ -260,22 +255,24 @@ e5.config(validate="key", validatecommand=validate_command)
 e6.config(validate="key", validatecommand=validate_command)
 
 
-# Definirea valorilor implicite pentru câmpurile de intrare
+# Default values dict
 default_values = {"e1": "500000", "e2": "200000", "e3": "1000000", "e4": "500000", "e5": "500000", "e6": "200000"}
 
-# Funcția pentru a seta valorile implicite în câmpurile de intrare
 def set_default_input_values():
     for entry_name, default_value in default_values.items():
         entry_widget = globals()[entry_name]  # Obțineți widget-ul câmpului de intrare după numele său
         entry_widget.insert(0, default_value)  # Inserați valoarea implicită în câmpul de intrare
 
-# Apelați funcția pentru a seta valorile implicite la pornirea aplicației
+# Default values
 set_default_input_values()
 
 if __name__ == "__main__":
     # Delete progress file
     if os.path.exists("progress.txt"):
         os.remove("progress.txt")
+
+    if os.path.exists("done.txt"):
+        os.remove("done.txt")
 
     app.after(1000, update_progress)  # Apelează funcția inițial
     app.mainloop()

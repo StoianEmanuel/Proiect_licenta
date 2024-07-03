@@ -2,17 +2,17 @@ import sys
 import numpy as np
 from math import sqrt, ceil
 import re
-sys.path.append("C:\\Program Files\\KiCad\\7.0\\bin")
 import copy
+from pathos.threading import ThreadPool as Pool
+
+sys.path.append("C:\\Program Files\\KiCad\\7.0\\bin")
 import pcbnew # type: ignore
 from pcbnew import ToMM # type: ignore
 from utils import Pad, UserSettings, PlannedRoute, UnionFind, division_int, list_unique, \
                     mark_path_in_array, mark_clearance_on_grid, mark_adjent_path
-from routing_algorithms import get_paths 
-from pathos.threading import ThreadPool as Pool
 
+# Routes assigned to only one pad
 def remove_useless_routes(routes: dict, pads: list):
-    # Inițializăm structura Union-Find pentru a ține evidența componentelor conexe
     unique_points = set()
     if routes:
         for route in routes.values():
@@ -22,17 +22,14 @@ def remove_useless_routes(routes: dict, pads: list):
         point_to_index = {point: idx for idx, point in enumerate(unique_points)}
         uf = UnionFind(len(unique_points))
 
-        # Creăm componentele conexe pentru punctele din trasee
         for route in routes.values():
             for start_y, start_x, end_y, end_x in route.coord_list:
                 start_point_idx = point_to_index[(start_y, start_x)]
                 dest_point_idx = point_to_index[(end_y, end_x)]
                 uf.union(start_point_idx, dest_point_idx)
 
-        # Inițializăm o listă cu punctele asociate pad-urilor
         pad_list = [pad.center for pad in pads]
 
-        # Identificăm traseele inutile și le stocăm într-un set
         useless = set()
         for point in unique_points:
             ok = False
@@ -48,7 +45,6 @@ def remove_useless_routes(routes: dict, pads: list):
             if not ok:
                 useless.add(point)
 
-        # Eliminăm traseele inutile din dicționarul de trasee
         filtered_routes = {}
         for netcode, route in routes.items():
             coord_list = route.coord_list
@@ -68,9 +64,6 @@ def remove_useless_routes(routes: dict, pads: list):
         return filtered_routes
 
 
-# if keep_values -- keep
-# if overwrite == True - check for pwr, gnd and then all
-# else assign default value for
 def get_settings_from_existing_tracks(board: pcbnew.BOARD, user_settings: UserSettings = None):
     tracks = board.GetTracks()       
     max_unit = 100000  #
@@ -84,9 +77,9 @@ def get_settings_from_existing_tracks(board: pcbnew.BOARD, user_settings: UserSe
         start_x, start_y = track.GetStart() # original nm; GetStart -> x, y
         end_x, end_y = track.GetEndX(), track.GetEndY() # nm
         width = track.GetWidth()   # nm
-        clearance = track.GetOwnClearance(pcbnew.B_Cu, track.GetStart()) # Back copper layer ; nm
+        clearance = track.GetOwnClearance(pcbnew.B_Cu, track.GetStart()) # bottom copper layer ; nm
 
-        # Suprascrie valorile cu cele personalizate
+        # Change values
         for settings in user_settings.dict.values():
             pattern = settings['pattern']
             if pattern.search(netname):
@@ -157,7 +150,6 @@ def remove_offset_coord(coord_list, offset_y, offset_x):
 
 
 def get_clearance_shape(original_shape, clearance: int):
-    # Adăugăm punctele de clearance extinse
     if clearance > 0:
         clearance_area = []
         for y, x in original_shape:
@@ -167,7 +159,6 @@ def get_clearance_shape(original_shape, clearance: int):
     else:
         clearance_area = copy.deepcopy(original_shape)
 
-    # Convertim în listă și sortăm
     clearance_area = list_unique(clearance_area)
     clearance_area.sort()
 
@@ -192,29 +183,23 @@ def get_clearance_shape(original_shape, clearance: int):
     return clearance_dict
 
 
-
+# Return list of (row, starting column, lenght column)
 def get_shape_from_vertices(vertices_list):
-    # Sortează vertecșii după Y apoi X
     vertices_list.sort(key=lambda x: (x[1], x[0])) 
 
-    # Extrage valorile minime și maxime pentru y
     y_values = [vertex[1] for vertex in vertices_list]
     min_y, max_y = min(y_values), max(y_values)
     
     shape_points = []
     prev_x_points = []
 
-    # Parcurge fiecare rând (y) de la min_y la max_y
     for y in range(min_y, max_y + 1):
-        # Punctele active pentru rândul curent
         current_x_points = [vertex[0] for vertex in vertices_list if vertex[1] == y]
         current_x_points.sort()
 
-        # Dacă nu există puncte active pe acest rând, copiază punctele active de pe rândul anterior
         if not current_x_points:
             current_x_points = prev_x_points
 
-        # Parcurge x de la min_x la max_x și adaugă punctele margine
         is_edge = False
         for x in range(min(current_x_points), max(current_x_points) + 1):
             if x in current_x_points:
@@ -226,7 +211,7 @@ def get_shape_from_vertices(vertices_list):
 
     return shape_points
 
-
+# Update coords according to multiplier
 def process_polygon(polygon, multiplier = 100):
     vertices_list = [(division_int(polygon.CVertex(i)[0], multiplier), division_int(polygon.CVertex(i)[1], multiplier)) 
                         for i in range(polygon.VertexCount())]
@@ -296,7 +281,6 @@ def get_interval(area, current_max_x, current_max_y, current_min_x, current_min_
 
 
 def get_connected_components(existing_tracks):
-    # Inițializăm structura Union-Find pentru a ține evidența componentelor conexe
     unique_points = set()
     for route in existing_tracks.values():
         for start_y, start_x, end_y, end_x in route.coord_list:
@@ -305,17 +289,14 @@ def get_connected_components(existing_tracks):
     point_to_index = {point: idx for idx, point in enumerate(unique_points)}
     uf = UnionFind(len(unique_points))
 
-    # Creăm componentele conexe pentru punctele din trasee
     for route in existing_tracks.values():
         for start_y, start_x, end_y, end_x in route.coord_list:
             start_point_idx = point_to_index[(start_y, start_x)]
             dest_point_idx = point_to_index[(end_y, end_x)]
             uf.union(start_point_idx, dest_point_idx)
 
-    # Inițializăm o listă de liste pentru a stoca conexiunile pentru fiecare netcode
     connected_components = {netcode: [] for netcode in existing_tracks}
 
-    # Identificăm conexiunile pentru fiecare netcode
     for netcode, route in existing_tracks.items():
         for start_y, start_x, end_y, end_x in route.coord_list:
             start_point_idx = point_to_index[(start_y, start_x)]
@@ -323,9 +304,8 @@ def get_connected_components(existing_tracks):
             parent_start = uf.find(start_point_idx)
             parent_dest = uf.find(dest_point_idx)
             if parent_start == parent_dest:
-                # Ignorăm conexiunile între același tată și destinație
                 continue
-            # Adăugăm conexiunea la lista de conexiuni pentru netcode-ul respectiv
+
             connected_components[netcode].append((parent_start, parent_dest))
 
     return connected_components
@@ -356,11 +336,12 @@ def get_netcodes(board, user_settings, existing_tracks = None):
                 netcode_dict[netcode]['clearance'] = user_settings['ALL']['clearance']
                 netcode_dict[netcode]['width'] = int(user_settings['ALL']['clearance'] * 1.5)
                 netcode_dict[netcode]['layer_id'] = 1 if user_settings.layers == 2 else 0
-            # trebuie adaugata logica pentru a evita track-urile deja amplasate
+
             elif existing_tracks and netcode in existing_tracks and netname in existing_tracks[netcode].netname:
                 netcode_dict[netcode]['clearance'] = existing_tracks[netcode].clearance
                 netcode_dict[netcode]['width'] = existing_tracks[netcode].width
                 netcode_dict[netcode]['layer_id'] = existing_tracks[netcode].layer_id
+
             else:
                 for value in user_settings.dict.values():
                     pattern = value['pattern']
@@ -394,7 +375,7 @@ def get_total_width(netcode_dict: dict) -> int:
     return width - aux
 
 
-
+# Define unusable area
 def set_area_in_grid(grid, area_list):
     if area_list:
         for area in area_list:
@@ -439,7 +420,7 @@ def get_board_offset(board_center, board_size, pads, rule_areas, netcode_dict):
         area = pad.clearance_area
         max_part_x, max_part_y, min_part_x, min_part_y = get_interval(area, max_part_x, max_part_y, min_part_x, min_part_y)
 
-    # max_clearance = board.GetDesignSettings().GetBiggestClearanceValue()
+
     dist_kept_for_tracks = int(get_total_width(netcode_dict = netcode_dict)) # on board edges
 
     offset_lt_x = max(origin_x, min_part_x - dist_kept_for_tracks * 2 // 3)
@@ -449,7 +430,7 @@ def get_board_offset(board_center, board_size, pads, rule_areas, netcode_dict):
     border_rb_x = min(max_part_x + dist_kept_for_tracks * 4 // 3, end_x) # right bottom
     border_rb_y = min(max_part_y + dist_kept_for_tracks * 4 // 3, end_y)
 
-    max_x = border_rb_x - offset_lt_x # eroare de aproximare
+    max_x = border_rb_x - offset_lt_x # aprox. error
     max_y = border_rb_y - offset_lt_y
     return offset_lt_y, offset_lt_x, max_y, max_x
 
@@ -486,21 +467,17 @@ def get_path_from_2verteces(start, end):
     start_y, start_x = start
     end_y, end_x = end
 
-    # Cazul în care punctele sunt pe aceeași linie orizontală
     if start_y == end_y:
-        # Adăugăm punctele de-a lungul liniei orizontale
         for x in range(min(start_x, end_x), max(start_x, end_x) + 1):
             main_path.append((start_y, x))
         return main_path
     
-    # Cazul în care punctele sunt pe aceeași linie verticală
-    if start_x == end_x:
-        # Adăugăm punctele de-a lungul liniei verticale
+    elif start_x == end_x:
         for y in range(min(start_y, end_y), max(start_y, end_y) + 1):
             main_path.append((y, start_x))
         return main_path
 
-    # Calculăm panta și interceptarea
+
     m = (end_y - start_y) / (end_x - start_x)
     c = start_y - m * start_x
     
@@ -508,13 +485,13 @@ def get_path_from_2verteces(start, end):
         start_y, end_y = end_y, start_y
         start_x, end_x = end_x, start_x
     
-    # Inițializăm punctul anterior
+
     x_prev, y_prev = start_x, start_y
     
     for y in range(start_y, end_y + 1):
-        x = (y - c) / m  # Calculăm x folosind ecuația dreptei
+        x = (y - c) / m
         
-        # Verificăm dacă trebuie să adăugăm un punct intermediar
+        # Check for other points
         distanta = sqrt((x - x_prev)**2 + (y - y_prev)**2)
         if distanta > sqrt(2):
             puncte_intermediare = ceil(distanta / sqrt(2)) - 1
@@ -524,7 +501,7 @@ def get_path_from_2verteces(start, end):
                 main_path.append((int(y_prev + i*dy), int(x_prev + i*dx)))
         
         if not main_path or main_path[-1] != (y, int(x)):
-            main_path.append((y, int(x)))  # Rotunjim x la cea mai apropiată valoare întreagă
+            main_path.append((y, int(x)))
         
         x_prev, y_prev = x, y
         
@@ -613,11 +590,10 @@ def swap_order(coordinate: tuple[int, int]):
 def mark_existing_tracks_on_grid(grid, grid_shape, existing_tracks, offset_y = 0, offset_x = 0):
     z, max_y, max_x = grid_shape
     counter = 0
-    for key in existing_tracks.keys():
+    for key in existing_tracks.keys(): # key should be == netcode
         counter += 1
         track = existing_tracks[key]
         point_list = track.coord_list
-        netcode = track.netcode # key should be == netcode
         width = track.width
         clearance = track.clearance
         layer_id = track.layer_id
@@ -661,7 +637,7 @@ def get_original_coord_for_path(path, nets, multiplier):
 def format_float(value):
     return "{:.3f}".format(value)
 
-
+# Reformat value to reduce precision 
 def truncate_value(f, decimals):
     s = '{}'.format(f)
     i, p, d = s.partition('.')
@@ -685,7 +661,7 @@ def get_cleaned_path(path):
     return cleaned_path
 
 
-
+# Form segments from paths found
 def get_segments_for_board(paths_found, nets, offset_board: tuple[int, int], multiplier):
     segments = []
     offset_y, offset_x = offset_board
@@ -731,15 +707,16 @@ def get_segments_for_board(paths_found, nets, offset_board: tuple[int, int], mul
     return segments
 
 
-
+# Save results in a new file
 def write_segments_to_EOF(read_file, output_file, segments_list, delete_previous_tracks = True):
-    # Construieste string-urile pentru segmente
+    # String from segments
     segments_string = '\n' + '\n'.join(segments_list) + '\n\n'
     
-    # Citeste continutul fisierului
+    # Read file
     with open(read_file, 'r') as f:
         content = f.readlines()
 
+    # Append result
     index1, index2 = None, None
     for index in range(len(content)-1, -1, -1):
         line = content[index].strip()
@@ -753,7 +730,6 @@ def write_segments_to_EOF(read_file, output_file, segments_list, delete_previous
             content = content[:index2+1] + [segments_string] + content[index1:]
             break
         
-
     with open(output_file, 'w') as f:
         f.writelines(content)
 
@@ -774,9 +750,13 @@ def get_settings(**kwargs) -> UserSettings:
         user_settings.set_width('ALL', all_wd)
         user_settings.set_clearance('ALL', all_cl)
     if pow_flag:
+        user_settings.enabled = True
         user_settings.set_width('POW', pow_wd)
         user_settings.set_clearance('POW', pow_cl)
+        if multiple_layers == 2:
+            user_settings.set_layer('POW', 'F.Cu')
     if gnd_flag:
+        user_settings.enabled = True
         user_settings.set_width('GND', gnd_wd)
         user_settings.set_clearance('GND', gnd_cl)
     user_settings.keep = keep_flag
@@ -784,7 +764,7 @@ def get_settings(**kwargs) -> UserSettings:
     return user_settings
 
 
-
+# Extract data from selected file (board, pads, tracks needed)
 def get_data_for_GA(filename, **kwargs):
     board = pcbnew.LoadBoard(filename)
 
@@ -823,55 +803,3 @@ def get_data_for_GA(filename, **kwargs):
         mark_existing_tracks_on_grid(template_grid, (z, max_y, max_x), existing_tracks, offset_y, offset_x)
 
     return template_grid, multiplier, offset_y, offset_x, pads, nets, routing_order, z
-
-
-
-# testare
-if __name__  == "__main__":
-    board = pcbnew.LoadBoard("C:\\Users\\manue\\Desktop\\KiCAD\\Test3\\Test3.kicad_pcb")
-
-    settings = UserSettings()
-
-    if False:    # keep values = True
-        existing_tracks, multiplier = get_settings_from_existing_tracks(board, settings)
-    else:
-        existing_tracks = None
-        multiplier = settings.get_multiplier()
-
-
-    settings.change_settings(multiplier)
-
-    size, center = get_board_dimensions(board, multiplier)
-
-    rules, layers = get_rule_areas(board, multiplier)
-
-    pads = get_pads_parallel(board, multiplier, 3)
-
-    if existing_tracks:
-        existing_tracks = remove_useless_routes(existing_tracks, pads)
-
-    netcodes = get_netcodes(board, settings, existing_tracks)
-    netcodes = remove_unusable_netcodes(netcodes)
-
-    offset_y, offset_x, max_y, max_x = get_board_offset(center, size, pads, rules, netcodes)
-
-    update_values(pads = pads, offset_x = offset_x, offset_y = offset_y, rule_areas = rules)
-
-    nets, routing_order = get_nets_from_netcode_dict(netcodes, existing_tracks)
-    update_coord_in_nets(nets, routing_order, offset_y, offset_x, multiplier)
-
-    z = settings.layers
-    grid = get_template_grid((z, max_y, max_x), rules, layers, pads)
-
-    if existing_tracks:
-        grid = mark_existing_tracks_on_grid(grid, (z, max_y, max_x), existing_tracks, offset_y, offset_x)
-
-    paths = get_paths(grid, (z, max_y, max_x), nets, routing_order, pads)
-
-    for index in range(len(paths)):
-        paths[index].update_simplified_path()
-        print("\n", paths[index].simplified_path, "\n")
-
-    segments = get_segments_for_board(paths, nets, (offset_y, offset_x), multiplier)
-
-    write_segments_to_EOF("C:\\Users\\manue\\Desktop\\KiCAD\\test_paralel\\test_paralel.kicad_pcb", segments)

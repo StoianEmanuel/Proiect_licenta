@@ -28,6 +28,7 @@ NEW_INDIVIDUALS:    int
 NEW_INDIV_JOBS:     int
 SEED:               int
 SELECTION:          bool
+
 # Scaling and offset
 AXIS_MULT        = None
 ROWS:               int
@@ -52,7 +53,7 @@ def generate_seeds(numbers, base_seed):
     random.seed(base_seed)
     return [random.random() for _ in range(numbers)]
 
-
+# Extrack values from tuple and keep in a list 
 def flatten_list(original_list):
     flattened_list = []
     for item in original_list:
@@ -73,7 +74,6 @@ def parallel_population_initialize(population_size: int, n_jobs: int, base_seed,
     return population
 
 
-# Funcția pentru a genera argumentele pentru fiecare proces de crossover
 def generate_crossover_args(seed, count, population, template_grid, planned_routes, pads_list, LAYERS, ROWS, COLUMNS):
     crossover_args = []
     random.seed(seed)
@@ -84,54 +84,17 @@ def generate_crossover_args(seed, count, population, template_grid, planned_rout
     return crossover_args
 
 
-# Funcția pentru a executa crossover-urile în paralel
-def parallel_crossover(seed, count, population, template_grid, planned_routes, pads_list, LAYERS, ROWS, COLUMNS):
-    # Generăm argumentele pentru fiecare proces de crossover
-    crossover_args = generate_crossover_args(seed, count, population, template_grid, planned_routes, pads_list, LAYERS, ROWS, COLUMNS)
 
-    # Folosim multiprocessing.Pool pentru a executa crossover-urile în paralel
-    with Pool(CROSSOVER_JOBS) as pool:
-        children_crossover = pool.starmap(crossover, crossover_args)
-
-    #children_crossover = flatten_list(children_crossover)
-    return children_crossover
-
-
-def mutate_with_seed(idx, population, args):
+def mutate_with_seed_path(idx, population, args):
     return path_mutation(population[idx], args)
 
 
-# Funcția pentru mutație, paralelizată cu joblib, folosind o selecție aleatorie a indivizilor
-def parallel_path_mutation(seed, population, count, args):
-    random.seed(seed)
-    selected_indices = [random.randint(0, len(population)-1) for _ in range(count)]
 
-    # Perform the mutations in parallel
-    with Pool(MUTATION_PATH_JOBS) as pool:
-        mutation_results = pool.starmap(mutate_with_seed, [(idx, population, args) for idx in selected_indices])
-    
-    population = flatten_list(population)
-    return mutation_results
-
-
-def mutate_with_seed2(idx, population, selected_indices, seeds, args):
+def mutate_with_seed_order(idx, population, selected_indices, seeds, args):
     individual = population[idx]
     seed_idx = selected_indices.index(idx)
     seed = seeds[seed_idx]
     return order_mutation(seed, individual, args)
-
-
-def parallel_order_mutation(seed, population, count, args):
-    random.seed(seed)
-    selected_indices = random.sample(range(len(population)), count)  # Use random.sample to select a subset without duplicates
-    seeds = [random.random() for _ in range(count)]
-
-    # Perform the mutations in parallel
-    with Pool(MUTATION_ORDER_JOBS) as pool:
-        mutation_results = pool.starmap(mutate_with_seed2, [(idx, population, selected_indices, seeds, args) for idx in selected_indices])
-
-    population = flatten_list(population)
-    return mutation_results
 
 
 # Selection based on roulette wheel; returns list on indexes of individuals selected from a generation
@@ -144,6 +107,36 @@ def select_individual(args):
         if sum_selection >= selection_point:
             return index
         index += 1
+
+
+
+def parallel_genetic_operators(seed, crossover_count, mutation_path_count, mutation_order_count, population, args):
+    NR_PATH_PLANNED, template_grid, planned_routes, pads_list, netcodes_list, LAYERS, ROWS, COLUMNS = args
+
+    random.seed(seed)
+    seed1 = random.random()
+    crossover_args = generate_crossover_args(seed1, crossover_count, population, template_grid, planned_routes, pads_list, LAYERS, ROWS, COLUMNS)
+
+
+    args1 = (NR_PATH_PLANNED, template_grid, planned_routes, pads_list, LAYERS, ROWS, COLUMNS)
+    parents_path_mutation = [random.randint(0, len(population)-1) for _ in range(mutation_path_count)]
+
+
+    args2 = (NR_PATH_PLANNED, template_grid, planned_routes, pads_list, netcodes_list, LAYERS, ROWS, COLUMNS)
+    parents_order_mutation = random.sample(range(len(population)), mutation_order_count)
+    seeds = [random.random() for _ in range(mutation_order_count)]
+
+    n_jobs = min(crossover_count + mutation_path_count + mutation_order_count, MAX_JOBS)
+    with Pool(n_jobs) as pool:
+        crossover_population = pool.starmap(crossover, crossover_args)
+        mutated_path_population = pool.starmap(mutate_with_seed_path, [(idx, population, args1) for idx in parents_path_mutation])
+        mutated_order_population = pool.starmap(mutate_with_seed_order, [(idx, population, parents_order_mutation, seeds, args2) for idx in parents_order_mutation])
+
+    result = []
+    result.extend(flatten_list(crossover_population))
+    result.extend(flatten_list(mutated_path_population))
+    result.extend(flatten_list(mutated_order_population))
+    return result
 
 
 def roulette_wheel_selection(population, selected_number):
@@ -169,11 +162,11 @@ def tournament_selection(seed, population, tournament_size, num_parents):
 
 # Adjusts the parameters (population size, number of generations, crossover and mutation operations per generatiosn, parents kept
 def set_parameters_GA(population_coef = 3, rounds_coef = 0.6, parents_coef = 20, 
-                      crossover_coef = 10, mutation_order_coef = 1, mutation_path_coef = 20): # 5
+                      crossover_coef = 20, mutation_order_coef = 1, mutation_path_coef = 20): # 5
     global MAX_JOBS, NR_PATH_PLANNED, POPULATION_SIZE, INIT_JOBS, ROUNDS
 
     MAX_JOBS = min(8, cpu_count() - 4) if cpu_count() > 6 else 1
-    POPULATION_SIZE = min(int(NR_PATH_PLANNED * population_coef), 10) # 55
+    POPULATION_SIZE = min(int(NR_PATH_PLANNED * population_coef), 12) # 55
 
     INIT_JOBS = MAX_JOBS
     ROUNDS = min(int(POPULATION_SIZE * rounds_coef), 7) # 25
@@ -200,21 +193,25 @@ def set_parameters_GA(population_coef = 3, rounds_coef = 0.6, parents_coef = 20,
 
 
 def genetic_routing(filename, logs_file, seed, max_minutes = None, event = None):
-    file1 = open(logs_file, "a") # Se va renunta la file open
-
     global population, best_solution, POPULATION_SIZE, ROUNDS, PARENTS_KEPT, \
         CROSSOVERS, CROSSOVERS_POINTS, CROSSOVER_JOBS, \
         MUTATIONS_ORDER, MUTATION_ORDER_JOBS, MUTATIONS_PATH, MUTATION_PATH_JOBS, \
         NEW_INDIVIDUALS, NEW_INDIV_JOBS, LAYERS, ROWS, COLUMNS, SELECTION
 
     start_time = time.time()
-    random.seed(seed)    
+    random.seed(seed)
 
-    for i in range(ROUNDS):
+    for i in range(ROUNDS+1):
         elapsed_time = time.time() - start_time
         if not event or not event.is_set() or (max_minutes and elapsed_time * 60 < max_minutes):
+            # Update progress
+            progress = ceil((i + 1) / ROUNDS * 100)
+            with open("progress.txt", "w") as f:
+                f.write(str(ROUNDS)+','+str(progress))
+
             print(f"Generation {i+1}")
             count = 0
+            changed = False
             for j in range(POPULATION_SIZE):
                 if population[j].total_cost == -1:
                     paths_info = population[j].paths
@@ -225,79 +222,60 @@ def genetic_routing(filename, logs_file, seed, max_minutes = None, event = None)
                     population[j].total_cost = cost
                     print(j, cost)
 
-                    if best_solution.total_cost == -1 or (cost != -1 and cost < best_solution.total_cost):
+                    if best_solution.total_cost == -1 or (cost != -1 and cost < best_solution.total_cost) or n < len(planned_routes) - len(best_solution.paths):
                         best_solution = copy.deepcopy(population[0])
                         count = 1
+                        changed = True
                     elif cost == best_solution.total_cost:
                         count += 1
 
-            file1.write(f"{i}: {str(best_solution)}\n")
-
-            aux_paths = [x.path for x in best_solution.paths]
-            best_paths = get_simplified_paths(paths_list = aux_paths)
-
-            if best_paths:
-                file1.write(f"{best_paths}\n")
-
             # Check if 85% of the population has the same cost as the best individual
-            if count >= 0.85 * POPULATION_SIZE:
+            if count >= 0.85 * POPULATION_SIZE and best_solution.unplaced_routes_number < 1:
                 print(f"Stopping early at generation {i+1} because 85% of the population has the same minimum cost.")
+                progress = 100
+                with open("progress.txt", "w") as f:
+                    f.write(str(i+1)+','+str(progress))
                 break
 
-            update_board_file(filename, event)
-            next_generation = []
+            if changed:
+                update_board_file(filename, event)
+            
+            # Last generation  won't be updated
+            if i == ROUNDS:
+                break
 
+            next_generation = []
             # tournament selection 
             aux_seed = random.random()
             selected_parents = tournament_selection(aux_seed, population, tournament_size=3, num_parents=PARENTS_KEPT)
             for index in selected_parents:
                 next_generation.append(copy.deepcopy(population[index]))
 
-            # crossover
-            crossover_children = parallel_crossover(seed, CROSSOVERS, population, template_grid, planned_routes, pads_list, LAYERS, ROWS, COLUMNS)
-            next_generation.extend(crossover_children)
-
-            # path mutation
-            aux_seed = random.random()
-            mutated_children = parallel_path_mutation(aux_seed, population, MUTATIONS_PATH, (NR_PATH_PLANNED, template_grid, planned_routes, pads_list, LAYERS, ROWS, COLUMNS))
-            next_generation.extend(mutated_children)
-
-            # order mutation
-            aux_seed = random.random()
-            mutated_children = parallel_order_mutation(aux_seed, population, MUTATIONS_ORDER, (NR_PATH_PLANNED, template_grid, planned_routes, pads_list, netcodes_list, LAYERS, ROWS, COLUMNS))
-            next_generation.extend(mutated_children)
+            # crossover + mutation
+            result = parallel_genetic_operators(aux_seed, CROSSOVERS, MUTATIONS_PATH, MUTATIONS_ORDER, population, (NR_PATH_PLANNED, template_grid, planned_routes, pads_list, netcodes_list, LAYERS, ROWS, COLUMNS))
+            next_generation.extend(result)
 
             # Add new individuals into the new generation
             aux_seed = random.random()
             new_individuals = parallel_population_initialize(NEW_INDIVIDUALS, NEW_INDIV_JOBS, aux_seed, None, None, template_grid, planned_routes, pads_list, netcodes_list, LAYERS, ROWS, COLUMNS)
             next_generation.extend(new_individuals)
             
-            for j in range(POPULATION_SIZE):   
-                file1.write(f"{i}, {j}, {next_generation[j]}\n")
             population = next_generation
 
-            # Update progress
-            progress = ceil((i + 1) / ROUNDS * 100)
-            with open("progress.txt", "w") as f:
-                f.write(str(ROUNDS)+','+str(progress))
-
-            update_board_file(filename, event)
             print(time.time() - start_time)
         else:
             break
 
     print("End time", time.time() - start_time)
-    file1.close()
 
 
-
+# Save sollution in a new file
 def update_board_file(filename, event):
-    # Salvare rezultate in fisier
     global OFFSET_X, OFFSET_Y, AXIS_MULT, planned_routes
     suffix = "_routed"
     if best_solution and (not event or not event.is_set()):
         best_paths = best_solution.paths
-        for index in range(len(netcodes_list)):
+        for index in range(len(best_paths)):
             best_paths[index].update_simplified_path()
 
         segments = get_segments_for_board(best_paths, planned_routes, (OFFSET_Y, OFFSET_X), AXIS_MULT)
@@ -307,8 +285,13 @@ def update_board_file(filename, event):
 
         write_segments_to_EOF(filename, new_filename, segments)
 
+    finished_file = "done.txt"
+    with open(finished_file, 'w') as f:
+        f.write("done")
+    f.close()
 
 
+# Initialize + update population
 def run_genetic_algorithm(filename, event = None, **kwargs):
     if not event or not event.is_set():
         global template_grid, pads_list, planned_routes, netcodes_list, OFFSET_Y, OFFSET_X, AXIS_MULT, LAYERS

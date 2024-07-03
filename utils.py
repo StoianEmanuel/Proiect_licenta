@@ -1,10 +1,8 @@
-# stores functions related to A_star.py and GA_routing
 from math import sqrt
 import copy
 import re
 
 
-# class used for A* search, that stores 2 types of costs: so far and remaining
 class Cell:
     '''Class used for A star search to determine the cost of paths based on heuristic'''
     def __init__(self, parent = None, f = float('inf'), h = float('inf'), g = 0):
@@ -21,8 +19,6 @@ class Cell:
         self.parent = parent
 
 
-
-# class used to define a path between two points that has width = n x 1;  
 class Path:
     """Class used to define a path between two points with a specified width"""
     def __init__(self, start: tuple[int, int], destination: tuple[int,  int], netcode: int = 0,
@@ -118,9 +114,6 @@ class UserSettings:
         self.keep = False
         self.layers = 1
 
-    def change_to_multiple_layers(self):
-        if self.layers == 2:
-            self.dict['POW']['layer'] = 'F.Cu'
 
     def change_settings(self, factor):
         for key, values in self.dict.items():
@@ -129,14 +122,20 @@ class UserSettings:
             self.dict[key]['width'] = width
             self.dict[key]['clearance'] = clearance
 
+
+    def set_layer(self, key, layer):
+        if key in self.dict:
+            self.dict[key]['layer_id'] = layer
+
+
     def set_width(self, key, width):
         if key in self.dict:
             self.dict[key]['width'] = width
 
 
-    def set_clearance(self, key, width):
+    def set_clearance(self, key, clearance):
         if key in self.dict:
-            self.dict[key]['width'] = width
+            self.dict[key]['clearance'] = clearance
 
  
     def get_multiplier(self):
@@ -153,6 +152,7 @@ class UserSettings:
 
 
 class Individual:
+        '''Describes a possible solution for GA routing problem'''
         def __init__(self):
             self.order = None
             self.paths = None
@@ -234,6 +234,7 @@ def check_90_deg_bend(p1, p2, p3):
     return False
 
 
+# Returns no of 90 deg bends, and total no of bends for a specific list of coordinates 
 def get_number_of_bends(path):
     if len(path) < 3:
         return 0, 0
@@ -254,7 +255,7 @@ def get_number_of_bends(path):
 
     return nr_regular_bends, nr_90_bends
 
-
+# Associate score to individuals based on tracks total length, unplaced nets and number of bends
 def fitness_function(paths, unplaced_routes_number: int, unplaced_route_penalty = 2):
     total_length = 0
     total_regular_bends, total_90_bends = 0, 0
@@ -267,7 +268,7 @@ def fitness_function(paths, unplaced_routes_number: int, unplaced_route_penalty 
             total_regular_bends += nr_regular_bends
             total_90_bends += nr_90_bends
 
-    total_length = (total_length + total_regular_bends + (total_90_bends << 5)) * (unplaced_route_penalty << unplaced_routes_number)
+    total_length = round((total_length + total_regular_bends + (total_90_bends << 5)) * (unplaced_route_penalty << unplaced_routes_number), 7)
 
     return total_length
 
@@ -295,7 +296,7 @@ def simplify_path(path):
         simplified_path.append(path[-1])
     return simplified_path
 
-
+# Returns a list with tracks
 def get_simplified_paths(paths_list):
     simplified_paths = []
     for path in paths_list:
@@ -483,9 +484,8 @@ def mark_clearance_on_grid(grid, grid_shape, path, path_width, clearance_width, 
     
     return grid
 
-
+# Returns a list that contains unique elements in order
 def list_unique(seq, id_f=None): 
-   # order preserving
    if id_f is None:
        def id_f(x): return x
    seen = {}

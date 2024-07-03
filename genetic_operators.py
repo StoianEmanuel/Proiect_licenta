@@ -8,22 +8,28 @@ import psutil
 import numpy as np
 
 def generate_individual(args):
-    seed, ordered_indexes, starting_grid, template_grid, planned_routes, pads_list, netcodes_list, layers, rows, columns = args
-    random.seed(seed)
-    if not ordered_indexes:
-        random_order_indexes = copy.deepcopy(netcodes_list)
-        shuffle(random_order_indexes)
-    else:
-        random_order_indexes = ordered_indexes
+    try:
+        seed, ordered_indexes, starting_grid, template_grid, planned_routes, pads_list, netcodes_list, layers, rows, columns = args
+        random.seed(seed)
+        if not ordered_indexes:
+            random_order_indexes = copy.deepcopy(netcodes_list)
+            shuffle(random_order_indexes)
+        else:
+            random_order_indexes = ordered_indexes
 
-    if np.all(np.array(starting_grid) != None):
-        possible_solution = get_paths(starting_grid, (layers, rows, columns), planned_routes, random_order_indexes, pads_list)
-    else:
-        possible_solution = get_paths(template_grid, (layers, rows, columns), planned_routes, random_order_indexes, pads_list)
+        if np.all(np.array(starting_grid) != None):
+            possible_solution = get_paths(starting_grid, (layers, rows, columns), planned_routes, random_order_indexes, pads_list)
+        else:
+            possible_solution = get_paths(template_grid, (layers, rows, columns), planned_routes, random_order_indexes, pads_list)
 
-    individual = Individual()
-    individual.set_values(order=random_order_indexes, paths=possible_solution)
-    return individual
+        individual = Individual()
+        individual.set_values(order=random_order_indexes, paths=possible_solution)
+        return individual
+    except Exception as e:
+        print(f"Exception in generate_individual: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
 
 
 # operations used for crossover; it is applied directly onto the children
@@ -49,6 +55,7 @@ def get_similarity_index(list1, list2) -> int:
     return min(len(list1), len(list2))
 
 
+# Modify process / subprocess priority
 def set_high_priority():
     p = psutil.Process(os.getpid())
     try:
@@ -57,31 +64,11 @@ def set_high_priority():
         # On UNIX, use 'os' directly
         os.nice(-20)
 
+
 # Worker initialization function
 def init_worker():
     set_high_priority()
 
-
-from concurrent.futures import ThreadPoolExecutor
-import threading
-def parallel_crossover(args1, args2):
-    args = [args1, args2]
-    results = []
-
-    def apply_crossover(arg):
-        result = generate_individual(arg)
-        results.append(result)
-
-    threads = []
-    for arg in args:
-        thread = threading.Thread(target=apply_crossover, args=(arg,))
-        thread.start()
-        threads.append(thread)
-
-    for thread in threads:
-        thread.join()
-
-    return results
 
 
 def crossover(seed, crossover_points, args):
@@ -107,7 +94,7 @@ def crossover(seed, crossover_points, args):
         previous_paths_parent1 = parent1.paths[:index1]
         grid1 = update_grid_with_paths(grid1, (ROWS, COLUMNS), previous_paths_parent1)
     else:
-        return copy.deepcopy(parent1), copy.deepcopy(parent2)
+        return parent1, parent2
 
     aux_planned_routes1 = copy.deepcopy(planned_routes)
 
@@ -130,7 +117,7 @@ def crossover(seed, crossover_points, args):
     return child1
 
 
-# perform a mutation on a individual and return the child
+# Alter path from the list of routes found for an individual
 def path_mutation(parent: Individual, args):    
     order = copy.deepcopy(parent.order)
     NR_PATH_PLANNED, template_grid, planned_routes, pads_list, LAYERS, ROWS, COLUMNS = args
@@ -143,6 +130,7 @@ def path_mutation(parent: Individual, args):
         if length < 10:
             return parent
         
+        # Mark the old paths (unmodified) in template grid 
         grid = copy.deepcopy(template_grid)
         previous_paths = parent.paths[0 : path_index]
         if previous_paths:
@@ -206,6 +194,8 @@ def path_mutation(parent: Individual, args):
         
         grid[layer][p1_y][p1_x] = 0
         grid[layer][p2_y][p2_x] = 0
+
+        # Using a* find the shortest path to connect the new points
         deviation_path = a_star_search(grid[layer][:][:], (ROWS, COLUMNS), (p1_y, p1_x), (p2_y, p2_x), netcode, clearance, width)
         if not deviation_path:
             return parent
@@ -222,9 +212,11 @@ def path_mutation(parent: Individual, args):
                 aux_planned_routes[netcode].existing_conn.append((path_object.start[0], path_object.start[1],
                                                                    path_object.destination[0], path_object.destination[1]))
 
+        # Find the rest of paths
         slice_order = order[path_index+1:]
         new_paths = get_paths(grid, (LAYERS, ROWS, COLUMNS), aux_planned_routes, slice_order, pads_list)
 
+        # Form a child from old, modified and new paths
         child = Individual()
         child.set_values(order, paths + new_paths)
         return child
@@ -232,8 +224,8 @@ def path_mutation(parent: Individual, args):
     return parent
 
 
-# perform a mutation on a individual and return the child
-def order_mutation(seed, parent: Individual, args):       # later can be modified to replace one segment from a circuit to another (3 or more points routing)
+# Modify the routing order for an individual
+def order_mutation(seed, parent: Individual, args):
     order = copy.deepcopy(parent.order)
     NR_PATH_PLANNED, template_grid, planned_routes, pads_list, netcodes_list, LAYERS, ROWS, COLUMNS = args
 
